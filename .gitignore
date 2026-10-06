@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# PATIENT DATA — NEVER COMMIT
+# The case records contain PHI. They stay on each person's machine (or an
+# approved environment) and must never be pushed, even to this private repo.
+# ---------------------------------------------------------------------------
+data/*
+!data/README.md
+records/
+outputs/
+runs/
+*.pdf
+*.PDF
+*.zip
+*.dcm
+*.docx
+*.doc
+*.eml
+*.msg
+*.tif
+*.tiff
+# Extensionless DICOM object names that ship in imaging exports
+2.16.840.*
+
+# Credentials (UMLS API key etc.) — use .env locally, never commit it
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# macOS / Windows junk
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Notebooks: keep the code, not the outputs (outputs can leak record text)
+.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
+*.swp

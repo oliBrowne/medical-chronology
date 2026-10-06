@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  no-patient-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if record files are committed
+        run: |
+          bad=$(git ls-files | grep -iE '\.(pdf|zip|dcm|docx?|eml|msg|tiff?)$|(^|/)2\.16\.840\.|(^|/)\.env$' || true)
+          if [ -n "$bad" ]; then
+            echo "These files look like patient records or secrets and must not be committed:"
+            echo "$bad"
+            exit 1
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: pytest -q

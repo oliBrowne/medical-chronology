@@ -24,6 +24,7 @@ _ICD = re.compile(r"\b[A-TV-Z]\d{2}\.[0-9A-Z]{1,4}\b")
 _CPT = re.compile(r"\b(\d{5}(?:-\d{2})?|[A-Z]\d{4})\b")
 _MONEY = re.compile(r"-?\$\s?[\d,]+\.\d{2}")
 _DOSE = re.compile(r"\b(\d+(?:\.\d+)?)\s?(mg|mcg|g|ml|mL|units?|tab|caps?)\b", re.I)
+_ALLERGY = re.compile(r"\ballerg\w*|\bNKDA\b|\bNKA\b", re.I)
 _LAB_HINT = re.compile(r"\((?:H|L|HH|LL)\)|\bref\b|within normal limits|\bnegative\b|\bpositive\b|U/L|mg/dL|mmol/L|g/dL|K/uL", re.I)
 
 TABLE_KINDS = {"billing": "billing", "medication_record": "medication", "lab_result": "lab"}
@@ -94,7 +95,7 @@ def read_table(text: str, page_type: str) -> TableRead:
     kind = TABLE_KINDS.get(page_type)
     if kind is None:
         return TableRead(False, [], f"no table reader for {page_type}")
-    rows, leftovers, nonempty = [], [], 0
+    rows, kept, leftovers, nonempty = [], [], [], 0
     for s, e, line in _lines(text):
         if not line.strip():
             continue
@@ -102,10 +103,21 @@ def read_table(text: str, page_type: str) -> TableRead:
         row = _row(kind, s, e, line)
         if row:
             rows.append(row)
+        elif _ALLERGY.search(line):
+            kept.append(Row("allergy", s, e, line))
+        elif _DATE.search(line):
+            # a header or footer date ("Collected 03/14/2024", "Dates of service
+            # 04/02/24 - 04/30/24"): kept, and rows without a date inherit it
+            kept.append(Row("context", s, e, line, _DATE.search(line).group(0)))
         else:
             leftovers.append(line)
     if not rows or len(rows) / max(1, nonempty) < MIN_ROW_SHARE:
         return TableRead(False, rows, "too few table rows: full read")
+    page_date = next((k.date for k in kept if k.kind == "context"), None)
+    for row in rows:
+        if row.date is None and page_date:
+            row.date = page_date
+    rows = sorted(rows + kept, key=lambda r: r.char_start)
     for line in leftovers:
         hit = clinical_keyword(line)
         if hit:

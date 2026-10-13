@@ -127,7 +127,7 @@ _CLINICAL_PATTERNS = [
     re.compile(r"\b(pain|denies|tender\w*|fractur\w*|numbness|numb|tingl\w*|weakness|"
                r"diagnos\w*|impression|assessment|complain\w*|symptom\w*|c/o|"
                r"radiat\w*|sprain|strain|swelling|bruis\w*|laceration|"
-               r"pt reports|patient reports|worse|improv\w*)\b", re.I),
+               r"pt reports|patient reports|worse|improv\w*|allerg\w*|NKDA)\b", re.I),
 ]
 
 

@@ -86,3 +86,11 @@ def test_billing_run_inherits_and_goes_to_table_reader():
     assert [r.decision.type_source for r in res] == ["direct", "direct", "run", "run", "run"]
     assert all(r.decision.route == "reader" for r in res)
     assert len(calls) == 2
+
+
+def test_table_reader_keeps_allergies_and_header_dates():
+    text = PAGES["eff-13"]["text"]
+    rows = readers.read_table(text, "lab_result").rows
+    assert all(r.date == "03/14/2024" for r in rows if r.kind == "lab")
+    mar = readers.read_table(PAGES["eff-12"]["text"], "medication_record").rows
+    assert any(r.kind == "allergy" and "NKDA" in r.quote for r in mar)

@@ -512,14 +512,14 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                  clean_input: bool = True, ask_position: bool = True,
                  split_clinical: bool = True, use_headers: bool = True,
                  type_thresholds: dict[str, float] | None = None,
-                 tell_position: bool = False, double_check: bool = False,
+                 tell_position: bool = True, double_check: bool = False,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
     doc and seq; ``ask(state, questions)`` returns a Jev response. The
-    defaults are the full design (v5 in the tests: 1/76 pages unsure, Jev
-    reading 19% of the text); each stage can be switched off so its effect
-    can be measured. ``labels`` defaults to ``jev.PAGE_TYPES_DETAILED``, which
-    only helps together with ``clean_input``.
+    defaults are the full design (v7 in the tests: on two held-out sets of
+    made-up pages, 2/32 and 0/28 pages left unsure, no clinical page held
+    back); each stage can be switched off so its effect can be measured. The
+    detailed label wording only helps together with ``clean_input``.
 
     Routes: ``duplicate``; ``skip`` (index only); ``reader`` (a table reader
     in code reads it); ``full`` (page agent reads the page); ``full_new``
@@ -550,21 +550,30 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                         reader, never held back), with every Nth page still
                         asked as a spot check.
 
-    Measured separately, off by default:
-    ``type_thresholds`` a confidence bar per page type (see
-                        ``clinical_type_thresholds``). Types that can hold a
-                        page back always keep ``type_threshold``.
+    Added in v7 (on by default):
+    ``labels``          defaults to ``jev.PAGE_TYPES_EXTENDED``: the detailed
+                        15 labels plus five that cannot hold a page back
+                        (inpatient record, flowsheet, police report, admin
+                        letter, blank or separator).
+    ``type_thresholds`` a confidence bar per page type; defaults to
+                        ``clinical_type_thresholds(labels)`` (0.70 for types
+                        that are read anyway). Types that can hold a page
+                        back, and "other", keep ``type_threshold``. Pass {} to
+                        use ``type_threshold`` for every type.
     ``tell_position``   Jev is told "page 3 of 5 in its file; page 1 begins
                         ..." as context.
+    Measured and not used (off by default):
     ``double_check``    the page-type question is asked a second time with the
                         labels in reverse order; if the answers differ the
-                        page is unsure. Doubles first-pass calls.
-    Larger label sets (``jev.PAGE_TYPES_EXTENDED``) are passed as ``labels``.
+                        page is unsure. Doubled first-pass calls and changed
+                        nothing on the held-out pages.
     """
     from chronology import jev, readers  # local import: readers imports this module
 
     if labels is None:
-        labels = jev.PAGE_TYPES_DETAILED
+        labels = jev.PAGE_TYPES_EXTENDED
+    if type_thresholds is None:
+        type_thresholds = clinical_type_thresholds(labels)
 
     results = [PageResult(p["id"], p.get("doc", p["id"]), p.get("seq", 1), p["text"]) for p in pages]
     results.sort(key=lambda r: (r.doc, r.seq))

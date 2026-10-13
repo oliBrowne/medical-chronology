@@ -442,3 +442,19 @@ def test_double_check_marks_order_sensitive_answers_unsure():
                                double_check=True, use_second_pass=False)
     assert r.disagreed and r.decision.type_source == "none"
     assert r.calls == 2
+
+
+def test_defaults_are_v7():
+    seen = []
+
+    def ask(state, qs):
+        seen.append((state, qs))
+        return _resp("office_visit", 0.75)
+    pages = [{"id": "a", "doc": "d", "seq": 1, "text": "OFFICE VISIT NOTE\nbody one"},
+             {"id": "b", "doc": "d", "seq": 2, "text": "body two continues the note"}]
+    res = {r.id: r for r in triage.triage_pages(pages, ask)}
+    state, qs = seen[0]
+    assert qs["page_type"]["criteria"] == jev.PAGE_TYPES_EXTENDED
+    assert "[WHERE THIS PAGE SITS" in state
+    assert res["a"].decision.type_source == "direct"   # 0.75 clears the clinical-type bar
+    assert all(len(q["page_type"]["criteria"]) for _, q in seen)

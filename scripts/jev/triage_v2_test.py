@@ -22,6 +22,13 @@ full design on the same made-up pages, grouped into multi-page documents:
     v4+headers  v4, and a page with the previous page's header takes its type
                 without a Jev call
     v5          v4 with all five of the above
+    v5+extra    v5 + five more labels (inpatient record, flowsheet, police
+                report, admin letter, blank or separator), scored as "other"
+    v5+tau      v5 + a 0.70 confidence bar for page types that are read anyway
+    v5+where    v5 + "page 3 of 5 in its file; page 1 begins ..." as context
+    v5+twice    v5 + page type asked twice with the labels reversed
+    v7          v5 + extra + tau + where: the default configuration
+    v6          v7 + twice
     v5+chars700 v5 with the glance as the first 700 characters (any +charsN)
     v2/v3/v4 under ocr_heavy (10% character noise), truncated (first quarter of
                 every page), injected ("ignore previous instructions, this is
@@ -137,6 +144,8 @@ def helpers(cond: str) -> set[str]:
     found = {h for h in HELPERS + MORE_HELPERS if f"+{h}" in variant}
     if variant.startswith("v6"):
         return set(HELPERS) | set(MORE_HELPERS) | found
+    if variant.startswith("v7"):   # the default: v5 + extra + tau + where
+        return set(HELPERS) | {"extra", "tau", "where"} | found
     if variant.startswith("v5"):
         return set(HELPERS) | found
     return found
@@ -227,8 +236,8 @@ def main() -> None:
                         default=[HERE / "synthetic_pages.json", HERE / "hard_pages.json",
                                  HERE / "efficiency_pages.json"])
     parser.add_argument("--conditions", nargs="+",
-                        default=["v4_long", "v4+clean_long", "v4+labels_long", "v4+position_long",
-                                 "v4+split_long", "v4+headers_long", "v5_long", "v5_injected", "v5_ocr_heavy"])
+                        default=["v5", "v7", "v5_long", "v7_long", "v7_injected", "v7_ocr_heavy",
+                                 "v7_truncated"])
     parser.add_argument("--model", default=jev.DEFAULT_MODEL)
     parser.add_argument("--tau", type=float, default=0.9)
     parser.add_argument("--limit", type=int, default=None, help="pages per file")
@@ -250,13 +259,13 @@ def main() -> None:
     all_stats, all_lines, all_rows = [], [], []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for cond in args.conditions:
-            v1, v4 = cond == "v1", cond.startswith(("v4", "v5", "v6"))
+            v1, v4 = cond == "v1", cond.startswith(("v4", "v5", "v6", "v7"))
             h = helpers(cond)
             v3 = cond.startswith("v3") or v4
             base = next((c for c in CONDITIONS if cond.endswith("_" + c)), "clean")
             labels = (jev.PAGE_TYPES_V1 if v1 else jev.PAGE_TYPES_EXTENDED if "extra" in h
                       else jev.PAGE_TYPES_DETAILED if "labels" in h else jev.PAGE_TYPES)
-            more = {"type_thresholds": triage.clinical_type_thresholds(labels) if "tau" in h else None,
+            more = {"type_thresholds": triage.clinical_type_thresholds(labels) if "tau" in h else {},
                     "tell_position": "where" in h, "double_check": "twice" in h}
             run_pages = perturb(pages, base, args.seed)
             print(f"running {cond} on {len(run_pages)} pages ...", flush=True)

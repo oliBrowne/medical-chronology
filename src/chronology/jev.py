@@ -88,7 +88,8 @@ EXTRA_PAGE_TYPES: dict[str, str] = {
                          "ward, hospital course or discharge summary"),
     "flowsheet": "Nursing flowsheet or vital-signs chart: rows of times with blood pressure, pulse, pain score",
     "police_report": "Police, incident or traffic crash report",
-    "admin_letter": "Letter or notice about appointments, missed visits, scheduling or an account",
+    "admin_letter": ("Letter or notice about appointments, missed visits or scheduling. A bill, statement "
+                     "or collections notice is billing"),
     "blank_or_separator": ("Blank page, separator or cover sheet inside a production, 'continued' page, or a "
                            "page holding only a signature"),
 }

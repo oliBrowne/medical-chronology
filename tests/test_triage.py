@@ -64,3 +64,82 @@ def test_hard_pages_are_well_formed():
         assert p["label"] in jev.PAGE_TYPES
         assert p["clinical"] in triage.CLINICAL_CONTENT
         assert p["text"].strip()
+
+
+# --- triage_pages ----------------------------------------------------------
+
+def _resp(page_type, tp, clinical="yes", cp=0.99, others=None):
+    probs = {page_type: tp, **(others or {})}
+    return {"answers": {"page_type": {"choice": page_type, "probabilities": probs},
+                        "clinical": {"choice": clinical, "probabilities": {clinical: cp}}},
+            "usage": {"input_tokens": 10}}
+
+
+def _scripted(answers):
+    """ask() that answers by the page marker found in [THIS PAGE]; a list of
+    answers is consumed in order (first pass, then second pass)."""
+    def ask(state, qs):
+        this = state.split("[THIS PAGE]\n", 1)[1].split("\n\n[", 1)[0]
+        a = answers[this]
+        return a.pop(0) if isinstance(a, list) else a
+    return ask
+
+
+def test_unsure_page_borrows_confident_neighbor_type_but_cannot_be_skipped():
+    pages = [{"id": "a", "doc": "d", "seq": 1, "text": "page A ed note"},
+             {"id": "b", "doc": "d", "seq": 2, "text": "page B continuation"}]
+    ask = _scripted({"page A ed note": _resp("ed_note", 0.98),
+                     "page B continuation": _resp("fax_cover", 0.5, "no", 0.99, {"ed_note": 0.4})})
+    res = {r.id: r for r in triage.triage_pages(pages, ask, jev.PAGE_TYPES)}
+    assert res["b"].decision.page_type == "ed_note"
+    assert res["b"].decision.type_source == "document"
+    assert res["b"].decision.route == "full"
+
+
+def test_second_pass_resolves_unsure_page():
+    pages = [{"id": "a", "text": "lonely page"}]
+    ask = _scripted({"lonely page": [_resp("other", 0.5, others={"lab_result": 0.45}),
+                                     _resp("lab_result", 0.95)]})
+    (r,) = triage.triage_pages(pages, ask, jev.PAGE_TYPES)
+    assert r.decision.page_type == "lab_result"
+    assert r.decision.type_source == "second_pass"
+    assert r.calls == 2
+
+
+def test_still_unsure_page_gets_full_read_without_hint():
+    pages = [{"id": "a", "text": "mystery"}]
+    ask = _scripted({"mystery": _resp("fax_cover", 0.6, "no", 0.99)})
+    (r,) = triage.triage_pages(pages, ask, jev.PAGE_TYPES)
+    assert r.decision.type_source == "none"
+    assert r.decision.route == "full"
+
+
+def test_keyword_backstop_stops_a_confident_skip():
+    pages = [{"id": "a", "text": "FAX COVER. Comments: pt called reporting new numbness"}]
+    ask = _scripted({pages[0]["text"]: _resp("fax_cover", 0.99, "no", 0.99)})
+    (r,) = triage.triage_pages(pages, ask, jev.PAGE_TYPES)
+    assert r.decision.route == "full"
+    assert r.decision.reason.startswith("keyword")
+
+
+def test_clean_admin_page_is_skipped():
+    pages = [{"id": "a", "text": "FAX COVER SHEET To: Records From: Clinic Pages: 3"}]
+    ask = _scripted({pages[0]["text"]: _resp("fax_cover", 0.99, "no", 0.99)})
+    (r,) = triage.triage_pages(pages, ask, jev.PAGE_TYPES)
+    assert r.decision.route == "skip"
+
+
+def test_failed_call_fails_open():
+    def ask(state, qs):
+        raise RuntimeError("timeout")
+    (r,) = triage.triage_pages([{"id": "a", "text": "anything"}], ask, jev.PAGE_TYPES)
+    assert r.decision.route == "full"
+    assert r.error
+
+
+def test_safety_nets():
+    assert triage.clinical_keyword("Dx: S16.1XXA") == "S16.1XXA"
+    assert triage.clinical_keyword("Ibuprofen 600 mg") == "600 mg"
+    assert triage.clinical_keyword("Number of pages including cover: 3") is None
+    assert triage.text_quality("a clean line of text") == 1.0
+    assert triage.text_quality("n~ois|y ^text `here") < triage.MIN_TEXT_QUALITY

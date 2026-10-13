@@ -31,7 +31,19 @@ PAGE_TYPES: dict[str, str] = {
     "billing": "Bill, invoice, itemized charges, claim form or ledger",
     "fax_cover": "Fax cover sheet or transmittal page with no clinical content",
     "records_admin": "Records request, certification of records, authorization or other administrative form",
+    "lab_result": "Laboratory or pathology result (blood work, urinalysis, cultures)",
+    "ems_report": "Ambulance or EMS patient care report",
+    "patient_form": "Form filled in by or for the patient: intake questionnaire, pain diagram, employer injury report, work-status or disability form",
+    "legal_correspondence": "Letter or filing from an attorney, insurer or court (demand letter, subpoena, claim correspondence)",
+    "education_handout": "Generic patient-education handout or home-care instructions not specific to this patient",
     "other": "None of the above, or unclear",
+}
+
+# The first ten labels, as used in the first tests; kept so old runs can be
+# repeated and compared.
+PAGE_TYPES_V1: dict[str, str] = {
+    k: v for k, v in PAGE_TYPES.items()
+    if k not in {"lab_result", "ems_report", "patient_form", "legal_correspondence", "education_handout"}
 }
 
 

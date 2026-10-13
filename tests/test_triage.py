@@ -143,3 +143,45 @@ def test_safety_nets():
     assert triage.clinical_keyword("Number of pages including cover: 3") is None
     assert triage.text_quality("a clean line of text") == 1.0
     assert triage.text_quality("n~ois|y ^text `here") < triage.MIN_TEXT_QUALITY
+
+
+def test_glance_keeps_top_and_last_lines():
+    text = "HEADER LINE\n" + "\n".join(f"middle line {i} with some words" for i in range(40)) + "\nLAST LINE"
+    g = triage.glance_text(text)
+    assert g.startswith("HEADER LINE") and g.endswith("LAST LINE")
+    assert "middle of page not shown" in g and len(g) < len(text) / 2
+    assert triage.glance_text("short page") == "short page"
+    top = triage.glance_text(text, bottom_lines=0)
+    assert top.startswith("HEADER LINE") and "LAST LINE" not in top
+
+
+def test_glance_confirms_on_full_page_before_skipping():
+    middle = "\n".join(f"routing detail number {i} for records" for i in range(30))
+    text = "FAX COVER SHEET\nTo: Records\n" + middle + "\nComments: pt reports new numbness\nCONFIDENTIAL"
+    seen = []
+
+    def ask(state, qs):
+        seen.append(state)
+        full = "numbness" in state.split("[THIS PAGE]\n", 1)[1]
+        clinical = ("yes", 1.0) if full else ("no", 0.99)
+        return {"answers": {"page_type": {"choice": "fax_cover", "probabilities": {"fax_cover": 0.99}},
+                            "clinical": {"choice": clinical[0], "probabilities": {clinical[0]: clinical[1]}}}}
+
+    (r,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES,
+                               glance=True, use_safety_nets=False)
+    assert r.confirmed and len(seen) == 2
+    assert r.decision.route == "full"
+
+
+def test_boilerplate_does_not_make_pages_duplicates():
+    footer = "\n".join(f"This production notice line {i} is printed on every page of the set." for i in range(12))
+    pages = [{"id": f"p{i}", "text": f"Visit {i}: patient reports neck pain level {i}, exam note {i * 7}.\n{footer}"}
+             for i in range(10)]
+
+    def ask(state, qs):
+        return {"answers": {"page_type": {"choice": "office_visit", "probabilities": {"office_visit": 0.99}},
+                            "clinical": {"choice": "yes", "probabilities": {"yes": 0.99}}}}
+
+    res = triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_templates=True)
+    assert not any(r.decision.route == "duplicate" for r in res)
+    assert not any(r.decision.type_source == "template" for r in res)

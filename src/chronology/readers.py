@@ -85,7 +85,7 @@ def _row(kind: str, s: int, e: int, line: str) -> Row | None:
     raise ValueError(kind)
 
 
-def read_table(text: str, page_type: str) -> TableRead:
+def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozenset()) -> TableRead:
     """Read a billing, medication or lab page as rows, or refuse.
 
     Refuses (so the page gets a full read) when the page type has no table
@@ -97,8 +97,8 @@ def read_table(text: str, page_type: str) -> TableRead:
         return TableRead(False, [], f"no table reader for {page_type}")
     rows, kept, leftovers, nonempty = [], [], [], 0
     for s, e, line in _lines(text):
-        if not line.strip():
-            continue
+        if not line.strip() or (ignore and _bp_norm(line) in ignore):
+            continue  # blank, or production boilerplate printed on many pages
         nonempty += 1
         row = _row(kind, s, e, line)
         if row:
@@ -123,6 +123,11 @@ def read_table(text: str, page_type: str) -> TableRead:
         if hit:
             return TableRead(False, rows, f"clinical text outside the table ({hit!r}): full read")
     return TableRead(True, rows, f"{len(rows)} {kind} rows")
+
+
+def _bp_norm(line: str) -> str:
+    from chronology.triage import norm_line
+    return norm_line(line)
 
 
 # --- copied-forward notes --------------------------------------------------

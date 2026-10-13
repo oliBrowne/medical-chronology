@@ -227,7 +227,31 @@ def risk_coverage(confidences: list[float], correct: list[bool],
 # --- the full triage pass over a production -------------------------------
 
 CONTEXT_CHARS = 600         # end of the previous page sent with each page
+GLANCE_TOP_SHARE = 0.25     # glance mode: top quarter of the page ...
+GLANCE_BOTTOM_LINES = 1     # ... plus its last line (0: top only)
+GLANCE_MIN_CHARS = 400      # pages shorter than this are sent whole
 WIDE_CONTEXT_CHARS = 1500   # second pass: more of the previous page, plus the next
+
+
+def glance_text(text: str, bottom_lines: int = GLANCE_BOTTOM_LINES) -> str:
+    """Top quarter of a page plus its last ``bottom_lines`` lines (0 for top
+    only), with the gap marked."""
+    if len(text) <= GLANCE_MIN_CHARS:
+        return text
+    lines = text.split("\n")
+    top, n = [], 0
+    for line in lines:
+        if n >= len(text) * GLANCE_TOP_SHARE and len(top) >= 2:
+            break
+        top.append(line)
+        n += len(line) + 1
+    rest = [x for x in lines[len(top):] if x.strip()]
+    if not rest:
+        return text
+    bottom = rest[-bottom_lines:] if bottom_lines > 0 else []
+    if len(bottom) == len(rest):
+        return text
+    return "\n".join(top) + "\n[... middle of page not shown ...]\n" + "\n".join(bottom)
 
 
 def page_state(text: str, before: str | None = None, after: str | None = None) -> str:
@@ -275,6 +299,8 @@ class PageResult:
     carried_share: float = 0.0
     chars_to_agent: int = 0
     model: str | None = None                               # "small" | "large" for the page agent
+    jev_chars: int = 0                                     # characters sent to Jev for this page
+    confirmed: bool = False                                # full-page check before holding back
 
 
 def _answer(resp: dict, name: str) -> tuple[str, float, dict[str, float]]:
@@ -321,6 +347,34 @@ class TemplateIndex:
         return None
 
 
+# --- boilerplate: lines printed on a large share of the production --------
+
+BOILERPLATE_MIN_PAGES = 5
+BOILERPLATE_MIN_SHARE = 0.10
+
+
+def norm_line(line: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", line.lower()).split())
+
+
+def boilerplate_lines(texts: list[str]) -> set[str]:
+    """Normalized lines that appear on many pages (production notices,
+    print footers). Duplicate and template checks ignore them, or every page
+    of a production would look like every other."""
+    from collections import Counter
+    df = Counter()
+    for t in texts:
+        df.update({norm_line(x) for x in t.split("\n") if norm_line(x)})
+    cut = max(BOILERPLATE_MIN_PAGES, BOILERPLATE_MIN_SHARE * len(texts))
+    return {line for line, n in df.items() if n >= cut}
+
+
+def strip_boilerplate(text: str, boilerplate: set[str]) -> str:
+    if not boilerplate:
+        return text
+    return "\n".join(x for x in text.split("\n") if norm_line(x) not in boilerplate)
+
+
 RUN_MIN = 2           # confident billing pages in a row before later pages inherit
 RUN_SPOT_CHECK = 4    # every Nth inherited page is still asked, to catch a change
 
@@ -332,6 +386,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
                  use_second_pass: bool = True, use_safety_nets: bool = True,
                  use_templates: bool = False, use_runs: bool = False,
                  use_readers: bool = False, use_copy_forward: bool = False,
+                 glance: bool = False, glance_bottom_lines: int = GLANCE_BOTTOM_LINES,
+                 confirm_before_hold: bool = True,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
     doc and seq; ``ask(state, questions)`` returns a Jev response. Each stage
@@ -340,6 +396,11 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
     Routes: ``duplicate``; ``skip`` (index only); ``reader`` (a table reader
     in code reads it); ``full`` (page agent reads the page); ``full_new``
     (page agent reads only the lines not copied from an earlier page).
+
+    With ``glance``, the first Jev pass sees only the top quarter and the last
+    lines of each page. That is enough to tell the type; whether anything
+    clinical is on the page can need the whole page, so a page that might be
+    held back is asked again on its full text first (``confirm_before_hold``).
     """
     from chronology import readers  # local import: readers imports this module
 
@@ -359,7 +420,13 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
 
     def ask_first(r: PageResult) -> None:
         prev = neighbor(r, -1) if use_context else None
-        state = page_state(r.text, prev.text[-CONTEXT_CHARS:] if prev else None)
+        if glance:
+            # no neighbor context at a glance: the second pass adds it for pages that need it
+            state = page_state(glance_text(r.text, glance_bottom_lines))
+            prev = None
+        else:
+            state = page_state(r.text, prev.text[-CONTEXT_CHARS:] if prev else None)
+        r.jev_chars += len(state)
         qs = {"page_type": page_type_question(labels, use_context and prev is not None),
               "clinical": clinical_content_question()}
         try:
@@ -374,6 +441,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
             r.decision = TriageDecision("full", reason="error: fail open", type_source="none")
         r.calls += 1
 
+    boilerplate = boilerplate_lines([r.text for r in results])
+
     # 1-2. duplicates, then the first Jev pass. With templates or runs the
     # pass goes in page order, because a page can reuse an earlier decision.
     dups, templates = DuplicateIndex(), TemplateIndex()
@@ -383,7 +452,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
     todo = []
     sequential = use_templates or use_runs
     for r in results:
-        other = dups.check_and_add(r.id, r.text)
+        core = strip_boilerplate(r.text, boilerplate)
+        other = dups.check_and_add(r.id, core)
         if other:
             r.decision = TriageDecision("duplicate", duplicate_of=other, reason="near-duplicate", type_source="none")
             continue
@@ -391,7 +461,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
         if not sequential:
             continue
         if use_templates:
-            hit = templates.match(r.text)
+            hit = templates.match(core)
             if hit:
                 src, d = hit
                 r.decision = TriageDecision("full", d.page_type, d.type_prob, d.clinical, d.clinical_prob,
@@ -416,7 +486,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
         if (use_templates and confident(d) and d.clinical == "no"
                 and (d.clinical_prob or 0) >= clinical_threshold
                 and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES):
-            templates.add(r.id, d, r.text)
+            templates.add(r.id, d, strip_boilerplate(r.text, boilerplate))
     if not sequential:
         list(pool_map(ask_first, todo))
 
@@ -454,6 +524,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
                 qs["clinical"] = clinical_content_question()
             state = page_state(r.text, prev.text[-WIDE_CONTEXT_CHARS:] if prev else None,
                                nxt.text[:CONTEXT_CHARS] if nxt else None)
+            r.jev_chars += len(state)
             try:
                 resp = ask(state, qs)
                 t, tp, _ = _answer(resp, "page_type")
@@ -470,6 +541,32 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
             r.calls += 1
 
         list(pool_map(second, todo))
+
+    # 4b. glance mode: before a page can be held back, ask again on the full page
+    if glance and confirm_before_hold:
+        def confirm(r: PageResult) -> None:
+            d = r.decision
+            if d.type_source not in ("direct", "second_pass") or d.page_type not in SKIPPABLE_TYPES:
+                return
+            prev = neighbor(r, -1) if use_context else None
+            state = page_state(r.text, prev.text[-CONTEXT_CHARS:] if prev else None)
+            r.jev_chars += len(state)
+            qs = {"page_type": page_type_question(labels, use_context and prev is not None),
+                  "clinical": clinical_content_question()}
+            try:
+                resp = ask(state, qs)
+                t, tp, _ = _answer(resp, "page_type")
+                c, cp, _ = _answer(resp, "clinical")
+                r.tokens += resp.get("usage", {}).get("input_tokens", 0)
+                d.page_type, d.type_prob, d.clinical, d.clinical_prob = t, tp, c, cp
+                d.type_source = "direct"
+                r.confirmed = True
+            except Exception as err:  # noqa: BLE001 - cannot confirm: read it
+                r.error = str(err)[:200]
+                d.type_source = "none"
+            r.calls += 1
+
+        list(pool_map(confirm, todo))
 
     # 5. route. Only types Jev answered directly (or a matched template) can
     # hold a page back; a table reader only takes a page it can read whole.
@@ -494,7 +591,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
             continue  # the original billing reader route
         if use_readers and d.type_source != "none" and d.page_type in readers.TABLE_KINDS \
                 and d.route in ("full", "billing"):
-            table = readers.read_table(r.text, d.page_type)
+            table = readers.read_table(r.text, d.page_type, ignore=boilerplate)
             if table.accepted:
                 d.route, d.reason, r.rows = "reader", table.reason, table.rows
                 continue

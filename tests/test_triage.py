@@ -364,3 +364,30 @@ def test_addendum_without_clinical_words_is_not_a_duplicate():
     index = triage.DuplicateIndex()
     index.check_and_add("a", note)
     assert index.check_and_add("b", note + "\nADDENDUM: patient states the brace helps at work") is None
+
+
+def test_glance_with_a_character_budget():
+    text = "HEADER\n" + "\n".join(f"line {i} " + "x" * 40 for i in range(200))
+    g = triage.glance_text(text, 0, max_chars=700)
+    assert 700 <= len(g.split("\n[...")[0]) < 760
+    assert triage.glance_text("short\npage", 0, max_chars=700) == "short\npage"
+
+
+def test_parallel_documents_match_serial_order():
+    import json as _json
+    from concurrent.futures import ThreadPoolExecutor
+    pages = _json.loads((Path(__file__).parents[1] / "scripts/jev/efficiency_pages.json").read_text())
+
+    def ask(state, qs):
+        page = state.split("[THIS PAGE]\n", 1)[1].lower()
+        t = "billing" if "$" in page else "fax_cover" if "fax" in page else "office_visit"
+        c = "no" if t != "office_visit" else "yes"
+        return {"answers": {"page_type": {"choice": t, "probabilities": {t: 0.97}},
+                            "clinical": {"choice": c, "probabilities": {c: 0.97}}}}
+
+    def summary(**kw):
+        return {r.id: (r.decision.route, r.decision.page_type, r.decision.type_source)
+                for r in triage.triage_pages(pages, ask, **kw)}
+
+    with ThreadPoolExecutor(4) as pool:
+        assert summary(parallel_docs=False) == summary(parallel_docs=True, pool_map=pool.map)

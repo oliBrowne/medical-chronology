@@ -280,15 +280,18 @@ GLANCE_MIN_CHARS = 400      # pages shorter than this are sent whole
 WIDE_CONTEXT_CHARS = 1500   # second pass: more of the previous page, plus the next
 
 
-def glance_text(text: str, bottom_lines: int = GLANCE_BOTTOM_LINES) -> str:
-    """Top quarter of a page plus its last ``bottom_lines`` lines (0 for top
+def glance_text(text: str, bottom_lines: int = GLANCE_BOTTOM_LINES,
+                max_chars: int | None = None) -> str:
+    """Top quarter of a page (or, with ``max_chars``, its first ``max_chars``
+    characters, whole lines) plus its last ``bottom_lines`` lines (0 for top
     only), with the gap marked."""
-    if len(text) <= GLANCE_MIN_CHARS:
+    if len(text) <= max(GLANCE_MIN_CHARS, max_chars or 0):
         return text
+    budget = max_chars if max_chars else len(text) * GLANCE_TOP_SHARE
     lines = text.split("\n")
     top, n = [], 0
     for line in lines:
-        if n >= len(text) * GLANCE_TOP_SHARE and len(top) >= 2:
+        if n >= budget and len(top) >= 2:
             break
         top.append(line)
         n += len(line) + 1
@@ -499,6 +502,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                  use_templates: bool = True, use_runs: bool = True,
                  use_readers: bool = True, use_copy_forward: bool = True,
                  glance: bool = True, glance_bottom_lines: int = GLANCE_BOTTOM_LINES,
+                 glance_chars: int | None = None, parallel_docs: bool = True,
                  confirm_before_hold: bool = True,
                  clean_input: bool = True, ask_position: bool = True,
                  split_clinical: bool = True, use_headers: bool = True,
@@ -529,6 +533,10 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
     ``split_clinical``  the clinical question has three answers (written
                         notes / only a table of values / no); a page with
                         written notes never goes to a table reader.
+    ``glance_chars``    the glance is the first N characters instead of the
+                        top quarter, so a long page costs no more than a short one.
+    ``parallel_docs``   with the reuse steps on, pages are asked in order
+                        within a document, but documents run in parallel.
     ``use_headers``     a page with the same header as the previous page of
                         its document takes that page's type without a Jev
                         call (a hint only: it is read in full or by a table
@@ -579,7 +587,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         prev = neighbor(r, -1) if use_context else None
         if glance:
             # no neighbor context at a glance: the second pass adds it for pages that need it
-            state = page_state(glance_text(jev_text(r), glance_bottom_lines))
+            state = page_state(glance_text(jev_text(r), glance_bottom_lines, glance_chars))
             prev = None
         else:
             state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None)
@@ -608,7 +616,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
 
     def needs_confirm(r: PageResult) -> bool:
         d = r.decision
-        if d.type_source == "direct" and glance_text(jev_text(r), glance_bottom_lines) == jev_text(r):
+        if d.type_source == "direct" and glance_text(jev_text(r), glance_bottom_lines, glance_chars) == jev_text(r):
             return False   # the glance already was the whole page
         return (not r.confirmed and d.type_source in ("direct", "second_pass")
                 and d.page_type in hold_types)
@@ -643,8 +651,11 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
     headers: dict[str, tuple[str | None, PageResult | None]] = {}   # doc -> (header, page it came from)
     header_count: dict[str, int] = {}
     header_off: set[str] = set()
-    todo = []
+    import threading
+    template_lock = threading.Lock()
+    todo, cores = [], {}
     sequential = use_templates or use_runs or use_headers
+    # duplicates first, in page order (code only, fast)
     for r in results:
         core = clean_for_jev(r.text, boilerplate)   # without stamps and boilerplate
         other = dups.check_and_add(r.id, core)
@@ -652,64 +663,80 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             r.decision = TriageDecision("duplicate", duplicate_of=other, reason="near-duplicate", type_source="none")
             continue
         todo.append(r)
-        if not sequential:
-            continue
-        h = page_header(clean_for_jev(r.text, jev_boilerplate)) if use_headers else None
-        last_h, src = headers.get(r.doc, (None, None))
-        headers[r.doc] = (h, None)   # a page becomes a header source only if Jev typed it confidently
-        if use_templates:
-            hit = templates.match(core)
-            if hit:
-                src, d = hit
-                r.decision = TriageDecision("full", d.page_type, d.type_prob, d.clinical, d.clinical_prob,
-                                            type_source="template", reason=f"matches template {src}")
-                continue
-        if use_headers:
-            if (h and h == last_h and src is not None and r.doc not in header_off
-                    and src.decision.page_type not in SKIPPABLE_TYPES):
-                headers[r.doc] = (h, src)
-                header_count[r.doc] = header_count.get(r.doc, 0) + 1
-                if header_count[r.doc] % RUN_SPOT_CHECK:
-                    r.decision = TriageDecision("full", src.decision.page_type, None, None, None,
-                                                type_source="header",
-                                                reason=f"same header as {src.id}")
+        cores[r.id] = core
+
+    def first_pass_doc(doc_pages: list[PageResult]) -> None:
+        """Pages of one document in order, so each can reuse earlier decisions."""
+        for r in doc_pages:
+            core = cores[r.id]
+            h = page_header(clean_for_jev(r.text, jev_boilerplate)) if use_headers else None
+            last_h, src = headers.get(r.doc, (None, None))
+            headers[r.doc] = (h, None)   # a page becomes a header source only if Jev typed it confidently
+            if use_templates:
+                with template_lock:
+                    hit = templates.match(core)
+                if hit:
+                    src, d = hit
+                    r.decision = TriageDecision("full", d.page_type, d.type_prob, d.clinical, d.clinical_prob,
+                                                type_source="template", reason=f"matches template {src}")
+                    continue
+            if use_headers:
+                if (h and h == last_h and src is not None and r.doc not in header_off
+                        and src.decision.page_type not in SKIPPABLE_TYPES):
+                    headers[r.doc] = (h, src)
+                    header_count[r.doc] = header_count.get(r.doc, 0) + 1
+                    if header_count[r.doc] % RUN_SPOT_CHECK:
+                        r.decision = TriageDecision("full", src.decision.page_type, None, None, None,
+                                                    type_source="header",
+                                                    reason=f"same header as {src.id}")
+                        continue
+                    ask_first(r)  # spot check
+                    if r.decision.page_type != src.decision.page_type:
+                        header_off.add(r.doc)
+                        headers[r.doc] = (h, None)
+                    continue
+            if use_runs and run_len.get(r.doc, 0) >= RUN_MIN and r.doc not in run_off:
+                inherited[r.doc] = inherited.get(r.doc, 0) + 1
+                if inherited[r.doc] % RUN_SPOT_CHECK:
+                    r.decision = TriageDecision("full", "billing", None, None, None, type_source="run",
+                                                reason="inherits billing from earlier pages")
                     continue
                 ask_first(r)  # spot check
-                if r.decision.page_type != src.decision.page_type:
-                    header_off.add(r.doc)
-                    headers[r.doc] = (h, None)
+                if r.decision.page_type != "billing":
+                    run_off.add(r.doc)
                 continue
-        if use_runs and run_len.get(r.doc, 0) >= RUN_MIN and r.doc not in run_off:
-            inherited[r.doc] = inherited.get(r.doc, 0) + 1
-            if inherited[r.doc] % RUN_SPOT_CHECK:
-                r.decision = TriageDecision("full", "billing", None, None, None, type_source="run",
-                                            reason="inherits billing from earlier pages")
-                continue
-            ask_first(r)  # spot check
-            if r.decision.page_type != "billing":
-                run_off.add(r.doc)
-            continue
-        ask_first(r)
-        d = r.decision
-        if use_headers and confident(d) and d.type_source == "direct":
-            headers[r.doc] = (h, r)
-        if d.page_type == "billing" and confident(d):
-            run_len[r.doc] = run_len.get(r.doc, 0) + 1
-        else:
-            run_len[r.doc] = 0
-        def template_worthy() -> bool:
-            return (confident(d) and d.clinical == "no" and (d.clinical_prob or 0) >= clinical_threshold
-                    and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES)
+            ask_first(r)
+            d = r.decision
+            if use_headers and confident(d) and d.type_source == "direct":
+                headers[r.doc] = (h, r)
+            if d.page_type == "billing" and confident(d):
+                run_len[r.doc] = run_len.get(r.doc, 0) + 1
+            else:
+                run_len[r.doc] = 0
+            def template_worthy() -> bool:
+                return (confident(d) and d.clinical == "no" and (d.clinical_prob or 0) >= clinical_threshold
+                        and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES)
 
-        if use_templates and template_worthy():
-            # a template is copied to later pages without a full-page check,
-            # so in glance mode it is confirmed on its full page first
-            if glance and confirm_before_hold and needs_confirm(r):
-                confirm_page(r)
-            if template_worthy():
-                templates.add(r.id, d, core)
+            if use_templates and template_worthy():
+                # a template is copied to later pages without a full-page check,
+                # so in glance mode it is confirmed on its full page first
+                if glance and confirm_before_hold and needs_confirm(r):
+                    confirm_page(r)
+                if template_worthy():
+                    with template_lock:
+                        templates.add(r.id, d, core)
+
     if not sequential:
         list(pool_map(ask_first, todo))
+    else:
+        docs_todo: dict[str, list[PageResult]] = {}
+        for r in todo:
+            docs_todo.setdefault(r.doc, []).append(r)
+        if parallel_docs:
+            list(pool_map(first_pass_doc, list(docs_todo.values())))
+        else:
+            for doc_pages in docs_todo.values():
+                first_pass_doc(doc_pages)
 
     def unsure(r: PageResult) -> bool:
         d = r.decision

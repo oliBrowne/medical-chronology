@@ -270,6 +270,11 @@ class PageResult:
     calls: int = 0
     tokens: int = 0
     error: str = ""
+    rows: list = field(default_factory=list)              # table reader output
+    new_spans: list[tuple[int, int]] = field(default_factory=list)  # copy-forward: lines to read
+    carried_share: float = 0.0
+    chars_to_agent: int = 0
+    model: str | None = None                               # "small" | "large" for the page agent
 
 
 def _answer(resp: dict, name: str) -> tuple[str, float, dict[str, float]]:
@@ -281,15 +286,63 @@ def _answer(resp: dict, name: str) -> tuple[str, float, dict[str, float]]:
     return a["choice"], float(probs.get(a["choice"], 0.0)), probs
 
 
+# --- templates: pages that repeat a form already sorted ------------------
+
+TEMPLATE_LINE_SHARE = 0.80
+TEMPLATE_MIN_LINES = 3
+_DIGITS = re.compile(r"\d+")
+
+
+def _template_lines(text: str) -> list[tuple[str, str]]:
+    """(normalized line with digits removed, original line) for non-empty lines."""
+    out = []
+    for line in text.split("\n"):
+        n = " ".join(re.sub(r"[^a-z ]", " ", _DIGITS.sub(" ", line.lower())).split())
+        if n:
+            out.append((n, line))
+    return out
+
+
+@dataclass
+class TemplateIndex:
+    _templates: list[tuple[str, TriageDecision, set[str]]] = field(default_factory=list)
+
+    def add(self, page_id: str, decision: TriageDecision, text: str) -> None:
+        self._templates.append((page_id, decision, {n for n, _ in _template_lines(text)}))
+
+    def match(self, text: str) -> tuple[str, TriageDecision] | None:
+        lines = _template_lines(text)
+        if len(lines) < TEMPLATE_MIN_LINES:
+            return None
+        for page_id, decision, tlines in self._templates:
+            new = [orig for n, orig in lines if n not in tlines]
+            if (1 - len(new) / len(lines)) >= TEMPLATE_LINE_SHARE and not any(clinical_keyword(x) for x in new):
+                return page_id, decision
+        return None
+
+
+RUN_MIN = 2           # confident billing pages in a row before later pages inherit
+RUN_SPOT_CHECK = 4    # every Nth inherited page is still asked, to catch a change
+
+
 def triage_pages(pages: list[dict], ask, labels: dict[str, str],
                  type_threshold: float = DEFAULT_TYPE_THRESHOLD,
                  clinical_threshold: float = DEFAULT_CLINICAL_THRESHOLD,
                  use_context: bool = True, use_document: bool = True,
                  use_second_pass: bool = True, use_safety_nets: bool = True,
+                 use_templates: bool = False, use_runs: bool = False,
+                 use_readers: bool = False, use_copy_forward: bool = False,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
     doc and seq; ``ask(state, questions)`` returns a Jev response. Each stage
-    can be switched off so its effect can be measured."""
+    can be switched off so its effect can be measured.
+
+    Routes: ``duplicate``; ``skip`` (index only); ``reader`` (a table reader
+    in code reads it); ``full`` (page agent reads the page); ``full_new``
+    (page agent reads only the lines not copied from an earlier page).
+    """
+    from chronology import readers  # local import: readers imports this module
+
     results = [PageResult(p["id"], p.get("doc", p["id"]), p.get("seq", 1), p["text"]) for p in pages]
     results.sort(key=lambda r: (r.doc, r.seq))
     by_doc: dict[str, list[PageResult]] = {}
@@ -301,18 +354,10 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
         i = doc.index(r) + step
         return doc[i] if 0 <= i < len(doc) else None
 
-    # 1. duplicates, in code
-    dups = DuplicateIndex()
-    todo = []
-    for r in results:
-        other = dups.check_and_add(r.id, r.text)
-        if other:
-            r.decision = TriageDecision("duplicate", duplicate_of=other, reason="near-duplicate", type_source="none")
-        else:
-            todo.append(r)
+    def confident(d: TriageDecision | None) -> bool:
+        return bool(d and d.type_prob is not None and d.type_prob >= type_threshold)
 
-    # 2. first pass: both questions, previous page as context
-    def first(r: PageResult) -> None:
+    def ask_first(r: PageResult) -> None:
         prev = neighbor(r, -1) if use_context else None
         state = page_state(r.text, prev.text[-CONTEXT_CHARS:] if prev else None)
         qs = {"page_type": page_type_question(labels, use_context and prev is not None),
@@ -329,10 +374,56 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
             r.decision = TriageDecision("full", reason="error: fail open", type_source="none")
         r.calls += 1
 
-    list(pool_map(first, todo))
+    # 1-2. duplicates, then the first Jev pass. With templates or runs the
+    # pass goes in page order, because a page can reuse an earlier decision.
+    dups, templates = DuplicateIndex(), TemplateIndex()
+    run_len: dict[str, int] = {}
+    run_off: set[str] = set()
+    inherited: dict[str, int] = {}
+    todo = []
+    sequential = use_templates or use_runs
+    for r in results:
+        other = dups.check_and_add(r.id, r.text)
+        if other:
+            r.decision = TriageDecision("duplicate", duplicate_of=other, reason="near-duplicate", type_source="none")
+            continue
+        todo.append(r)
+        if not sequential:
+            continue
+        if use_templates:
+            hit = templates.match(r.text)
+            if hit:
+                src, d = hit
+                r.decision = TriageDecision("full", d.page_type, d.type_prob, d.clinical, d.clinical_prob,
+                                            type_source="template", reason=f"matches template {src}")
+                continue
+        if use_runs and run_len.get(r.doc, 0) >= RUN_MIN and r.doc not in run_off:
+            inherited[r.doc] = inherited.get(r.doc, 0) + 1
+            if inherited[r.doc] % RUN_SPOT_CHECK:
+                r.decision = TriageDecision("full", "billing", None, None, None, type_source="run",
+                                            reason="inherits billing from earlier pages")
+                continue
+            ask_first(r)  # spot check
+            if r.decision.page_type != "billing":
+                run_off.add(r.doc)
+            continue
+        ask_first(r)
+        d = r.decision
+        if d.page_type == "billing" and confident(d):
+            run_len[r.doc] = run_len.get(r.doc, 0) + 1
+        else:
+            run_len[r.doc] = 0
+        if (use_templates and confident(d) and d.clinical == "no"
+                and (d.clinical_prob or 0) >= clinical_threshold
+                and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES):
+            templates.add(r.id, d, r.text)
+    if not sequential:
+        list(pool_map(ask_first, todo))
 
     def unsure(r: PageResult) -> bool:
         d = r.decision
+        if d.type_source in ("template", "run"):
+            return False
         return d.route != "duplicate" and (d.type_prob is None or d.type_prob < type_threshold)
 
     # 3. borrow a confident neighbor's type within the document (hint only)
@@ -342,8 +433,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
                 continue
             for step in (-1, 1):
                 n = neighbor(r, step)
-                if (n and n.decision and n.decision.type_source == "direct" and n.decision.type_prob
-                        and n.decision.type_prob >= type_threshold
+                if (n and n.decision and n.decision.type_source == "direct" and confident(n.decision)
                         and n.decision.page_type in _top(r.type_probs, 2)):
                     r.decision.page_type = n.decision.page_type
                     r.decision.type_source = "document"
@@ -381,16 +471,47 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
 
         list(pool_map(second, todo))
 
-    # 5. route. Only directly answered types can hold a page back.
+    # 5. route. Only types Jev answered directly (or a matched template) can
+    # hold a page back; a table reader only takes a page it can read whole.
+    memory = readers.LineMemory()
     for r in todo:
         d = r.decision
         if d.page_type is None:
+            r.chars_to_agent, r.model = len(r.text), "large"
             continue
         if unsure(r) and d.type_source != "document":
             d.type_source = "none"   # no confident type: full read, no hint
-        direct_prob = d.type_prob if d.type_source in ("direct", "second_pass") else 0.0
-        routed = route(d.page_type, direct_prob, d.clinical, d.clinical_prob,
-                       type_threshold, clinical_threshold,
-                       text=r.text if use_safety_nets else None)
-        d.route, d.reason = routed.route, routed.reason
+        if d.type_source == "run":
+            routed = TriageDecision("full", reason="inherited billing: no Jev answer")
+        else:
+            direct_prob = d.type_prob if d.type_source in ("direct", "second_pass", "template") else 0.0
+            routed = route(d.page_type, direct_prob, d.clinical, d.clinical_prob,
+                           type_threshold, clinical_threshold,
+                           text=r.text if use_safety_nets else None)
+        d.route, d.reason = routed.route, (routed.reason if d.type_source != "template"
+                                           else f"{d.reason}; {routed.reason}")
+        if d.route == "billing" and not use_readers:
+            continue  # the original billing reader route
+        if use_readers and d.type_source != "none" and d.page_type in readers.TABLE_KINDS \
+                and d.route in ("full", "billing"):
+            table = readers.read_table(r.text, d.page_type)
+            if table.accepted:
+                d.route, d.reason, r.rows = "reader", table.reason, table.rows
+                continue
+            if d.route == "billing":
+                d.route, d.reason = "full", table.reason
+        if d.route == "billing":
+            continue
+        if d.route == "full":
+            if use_copy_forward:
+                cf = memory.diff(r.text)
+                memory.add(r.text)
+                r.carried_share = cf.carried_share
+                if cf.worth_it:
+                    d.route, r.new_spans = "full_new", cf.new_spans
+                    d.reason += f"; {cf.carried_share:.0%} copied from earlier pages"
+            r.chars_to_agent = (sum(e - s for s, e in r.new_spans) if d.route == "full_new"
+                                else len(r.text))
+            r.model = readers.reader_model(d.page_type if d.type_source != "none" else None,
+                                           r.chars_to_agent)
     return results

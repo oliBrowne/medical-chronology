@@ -33,6 +33,8 @@ wrongly held back. Output goes to runs/triage-v2-<timestamp>/ (gitignored).
     python scripts/jev/triage_v2_test.py --limit 6     # quick check
     python scripts/jev/triage_v2_test.py               # everything (~350 calls, a few cents)
     python scripts/jev/triage_v2_test.py --fake        # offline dry run
+    python scripts/jev/triage_v2_test.py --pages scripts/jev/heldout_pages.json --conditions v4 v5
+                                                       # 32 pages not used to write labels or tune anything
 
 Uses only made-up pages: do not point this at real records until zero data
 retention is enabled on the TypeSafe org.

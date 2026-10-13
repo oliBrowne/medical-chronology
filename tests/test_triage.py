@@ -283,3 +283,12 @@ def test_jev_cleaning_keeps_a_documents_own_letterhead():
     docs = ["bill"] * 6 + [f"d{i}" for i in range(6)]
     bp = triage.boilerplate_lines(texts, 0.5, docs=docs, min_docs=3)
     assert triage.norm_line(head) not in bp and "production notice" in bp
+
+
+def test_heldout_pages_are_well_formed():
+    pages = json.loads((Path(__file__).parents[1] / "scripts/jev/heldout_pages.json").read_text())
+    assert len({p["id"] for p in pages}) == len(pages)
+    for p in pages:
+        assert p["label"] in jev.PAGE_TYPES
+        assert p["clinical"] in triage.CLINICAL_CONTENT
+        assert p["text"].strip()

@@ -36,6 +36,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+# Types a table reader in code can take instead of the page agent (readers.TABLE_KINDS).
+READER_TYPES = frozenset({"billing", "medication_record", "lab_result"})
 SKIPPABLE_TYPES = frozenset({"fax_cover", "records_admin", "legal_correspondence", "education_handout"})
 BILLING_TYPES = frozenset({"billing"})
 
@@ -230,8 +232,9 @@ class DuplicateIndex:
                 if len(other) < MIN_SHINGLES or len(sh & other) / len(sh) < self.threshold:
                     continue
                 added = words - other_words
-                if len(added) > DUPLICATE_MAX_NEW_WORDS or clinical_keyword(" ".join(sorted(added))):
-                    continue   # an addendum or amendment: new text to read
+                if (len(added) > DUPLICATE_MAX_NEW_WORDS or clinical_keyword(" ".join(sorted(added)))
+                        or any(c.isdigit() for w in added for c in w)):
+                    continue   # an addendum or amendment (new text, or a changed dose, value or date)
                 return other_id
         self._seen.append((page_id, sh, words))
         return None
@@ -388,10 +391,14 @@ def _clinical_answer(resp: dict) -> tuple[str, float, str, float]:
 # Lines that are stamps, not content: Bates numbers, "Page 3 of 12", a fax
 # transmission header ("04/02/2024 14:22 FROM 555-0100 P.003"), banners.
 _PHONE = r"(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]\d{4}"
+# Upper-case words that label a number on a page and are not a Bates prefix.
+_FIELD_LABELS = (r"(?:MRN|RX|DOB|DOS|ACCT|ACCOUNT|CLAIM|NPI|ID|SSN|CPT|HCPCS|ICD|DX|INR|CASE|POLICY|"
+                 r"GROUP|MEMBER|PIN|ZIP|BOX|TEL|FAX|PH|PHONE|ORDER|ACCESSION|LOT|NDC|INV|INVOICE|REF)"
+                 r"(?![A-Z])")
 _STAMP_LINE = re.compile(
     r"^\s*(?:"
     r"(?:page|pg\.?)\s*\d+(?:\s*(?:of|/)\s*\d+)?"                       # Page 3 of 12
-    r"|(?-i:[A-Z]{2,10}[-_ ]?(?:\d{6,9}|0\d{3,8}))"                       # Bates: ABC0001234, upper case
+    r"|(?-i:(?!" + _FIELD_LABELS + r")[A-Z]{2,10}[-_ ]?(?:\d{6,9}|0\d{3,8}))"  # Bates: ABC0001234, upper case
     r"|\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}.*\bfrom\b.*" + _PHONE + r".*\bp(?:age|g)?\.?\s*\d{1,4}\b.*"  # fax line
     r"|(?:\*+\s*)?(?:confidential|privileged and confidential)(?:\s*\*+)?"  # banner
     r")\s*$", re.I)
@@ -489,10 +496,6 @@ def boilerplate_lines(texts: list[str], min_share: float = BOILERPLATE_MIN_SHARE
             if n >= cut and (docs is None or len(in_docs[line]) >= min_docs)}
 
 
-def strip_boilerplate(text: str, boilerplate: set[str]) -> str:
-    if not boilerplate:
-        return text
-    return "\n".join(x for x in text.split("\n") if norm_line(x) not in boilerplate)
 
 
 RUN_MIN = 2           # confident billing pages in a row before later pages inherit
@@ -605,10 +608,16 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
     jev_boilerplate = boilerplate_lines([r.text for r in results], JEV_BOILERPLATE_MIN_SHARE,
                                         docs=[r.doc for r in results], min_docs=JEV_BOILERPLATE_MIN_DOCS)
 
+    cleaned: dict[int, str] = {}
+
     def jev_text(r: PageResult | None) -> str:
         if r is None:
             return ""
-        return clean_for_jev(r.text, jev_boilerplate) if clean_input else r.text
+        if not clean_input:
+            return r.text
+        if id(r) not in cleaned:
+            cleaned[id(r)] = clean_for_jev(r.text, jev_boilerplate)
+        return cleaned[id(r)]
 
     def where(r: PageResult) -> str | None:
         if not tell_position:
@@ -667,16 +676,19 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             r.decision = TriageDecision("full", reason="error: fail open", type_source="none")
         r.calls += 1
 
-    # Pages that could be held back from the page agent on Jev's word: the
-    # skippable types, and billing when no table reader checks it in code.
-    hold_types = SKIPPABLE_TYPES | (frozenset() if use_readers else BILLING_TYPES)
+    # Pages that could be kept from the page agent on Jev's word: skippable
+    # types, billing, and (with table readers) medication and lab pages. In
+    # glance mode each is checked on its full page first.
+    hold_types = SKIPPABLE_TYPES | BILLING_TYPES | (READER_TYPES if use_readers else frozenset())
 
     def needs_confirm(r: PageResult) -> bool:
+        """A first-pass answer that saw only the glance, on a type that can
+        keep the page from the page agent. (The second pass already reads the
+        whole page.)"""
         d = r.decision
-        if d.type_source == "direct" and glance_text(jev_text(r), glance_bottom_lines, glance_chars) == jev_text(r):
-            return False   # the glance already was the whole page
-        return (not r.confirmed and d.type_source in ("direct", "second_pass")
-                and d.page_type in hold_types)
+        if r.confirmed or d.type_source != "direct" or d.page_type not in hold_types:
+            return False
+        return glance_text(jev_text(r), glance_bottom_lines, glance_chars) != jev_text(r)
 
     def confirm_page(r: PageResult) -> None:
         """Ask both questions again on the full page (glance mode)."""
@@ -702,7 +714,15 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
 
     # 1-2. duplicates, then the first Jev pass. With templates or runs the
     # pass goes in page order, because a page can reuse an earlier decision.
-    dups, templates = DuplicateIndex(), TemplateIndex()
+    dups = DuplicateIndex()
+    doc_templates: dict[str, TemplateIndex] = {}
+
+    def templates_for(doc: str) -> TemplateIndex:
+        """Templates are learned and matched within one document (file). A
+        shared index would make a match depend on which document's thread got
+        there first, so the same production could triage differently from one
+        run to the next."""
+        return doc_templates.setdefault(doc, TemplateIndex())
     run_len: dict[str, int] = {}
     run_off: set[str] = set()
     inherited: dict[str, int] = {}
@@ -732,7 +752,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             headers[r.doc] = (h, None)   # a page becomes a header source only if Jev typed it confidently
             if use_templates:
                 with template_lock:
-                    hit = templates.match(core)
+                    hit = templates_for(r.doc).match(core)
                 if hit:
                     src, d = hit
                     r.decision = TriageDecision("full", d.page_type, d.type_prob, d.clinical, d.clinical_prob,
@@ -765,24 +785,24 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                 continue
             ask_first(r)
             d = r.decision
+            # check the full page before later pages can learn from this one
+            if glance and confirm_before_hold and needs_confirm(r):
+                confirm_page(r)
+                d = r.decision
             if use_headers and confident(d) and d.type_source == "direct":
                 headers[r.doc] = (h, r)
             if d.page_type == "billing" and confident(d):
                 run_len[r.doc] = run_len.get(r.doc, 0) + 1
             else:
                 run_len[r.doc] = 0
-            def template_worthy() -> bool:
-                return (confident(d) and d.clinical == "no" and (d.clinical_prob or 0) >= clinical_threshold
-                        and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES)
-
-            if use_templates and template_worthy():
-                # a template is copied to later pages without a full-page check,
-                # so in glance mode it is confirmed on its full page first
-                if glance and confirm_before_hold and needs_confirm(r):
-                    confirm_page(r)
-                if template_worthy():
-                    with template_lock:
-                        templates.add(r.id, d, core)
+            # a template is copied to later pages without a Jev call, so only
+            # a direct, confident, full-page (or confirmed) answer becomes one
+            if (use_templates and d.type_source == "direct" and confident(d) and d.clinical == "no"
+                    and (d.clinical_prob or 0) >= clinical_threshold
+                    and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES
+                    and not (glance and confirm_before_hold and needs_confirm(r))):
+                with template_lock:
+                    templates_for(r.doc).add(r.id, d, core)
 
     if not sequential:
         list(pool_map(ask_first, todo))
@@ -897,7 +917,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         # come from confident pages with spot checks and may use a reader
         if use_readers and readable and not notes and d.type_source not in ("none", "document") \
                 and d.page_type in readers.TABLE_KINDS and d.route in ("full", "billing"):
-            table = readers.read_table(r.text, d.page_type, ignore=boilerplate)
+            table = readers.read_table(r.text, d.page_type, ignore=boilerplate,
+                                       strict=d.type_source in ("run", "header"))
             if table.accepted:
                 d.route, d.reason, r.rows = "reader", table.reason, table.rows
                 continue
@@ -929,5 +950,6 @@ def clinical_type_thresholds(labels: dict[str, str], value: float = CLINICAL_TYP
     type is then only a hint for the page agent). Types that can hold a page
     back are left out, so they keep the global threshold, and so is "other":
     a lowered bar there turned billing pages and a deposition into confident
-    "other" hints on the held-out pages."""
-    return {t: value for t in labels if t not in SKIPPABLE_TYPES | BILLING_TYPES | {"other"}}
+    "other" hints on the held-out pages. Types with a table reader keep it too:
+    a reader keeps a page from the page agent."""
+    return {t: value for t in labels if t not in SKIPPABLE_TYPES | READER_TYPES | {"other"}}

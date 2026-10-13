@@ -58,7 +58,8 @@ def _ask_by_marker(table):
 
 
 def test_template_reuse_skips_jev_but_not_a_page_with_a_clinical_comment():
-    pages = [dict(PAGES[i]) for i in ("eff-09", "eff-10", "eff-11")]
+    # templates are per file: the three covers sit in one file here
+    pages = [dict(PAGES[i], doc="faxes", seq=n) for n, i in enumerate(("eff-09", "eff-10", "eff-11"), 1)]
     calls = []
     inner = _ask_by_marker({"FAX COVER": ("fax_cover", "no")})
 

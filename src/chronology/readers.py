@@ -27,6 +27,9 @@ _DOSE = re.compile(r"\b(\d+(?:\.\d+)?)\s?(mg|mcg|g|ml|mL|units?|tab|caps?)\b", r
 _ALLERGY = re.compile(r"\ballerg\w*|\bNKDA\b|\bNKA\b", re.I)
 _LAB_HINT = re.compile(r"\((?:H|L|HH|LL)\)|\bref\b|within normal limits|\bnegative\b|\bpositive\b|U/L|mg/dL|mmol/L|g/dL|K/uL", re.I)
 
+_CODE_FIRST = re.compile(r"^\s*(?:\d{5}(?:-\d{2})?|[A-Z]\d{4})\s+[A-Za-z]")
+_PROSE_WORD = re.compile(r"[A-Za-z]{2,}")
+
 TABLE_KINDS = {"billing": "billing", "medication_record": "medication", "lab_result": "lab"}
 MIN_ROW_SHARE = 0.4   # at least this share of non-empty lines must be rows
 
@@ -66,7 +69,8 @@ def _row(kind: str, s: int, e: int, line: str) -> Row | None:
         icd = _ICD.findall(line)
         money = _MONEY.search(line)
         cpt = [c for c in _CPT.findall(line) if not _DATE.search(c)]
-        if not (icd or money or (cpt and date)):
+        coded_line = bool(_CODE_FIRST.match(line))   # "97110 Therapeutic exercise x2"
+        if not (icd or money or (cpt and (date or coded_line))):
             return None   # a bare 5-digit number with no date or amount is not a charge (a ZIP code)
         return Row(kind, s, e, line, date.group(0) if date else None, cpt, icd,
                    money.group(0) if money else None)
@@ -85,12 +89,23 @@ def _row(kind: str, s: int, e: int, line: str) -> Row | None:
     raise ValueError(kind)
 
 
-def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozenset()) -> TableRead:
+def _is_sentence(line: str) -> bool:
+    """Six or more words with few numbers: written text, not a table row."""
+    tokens = line.split()
+    if len(_PROSE_WORD.findall(line)) < 6 or not tokens:
+        return False
+    return sum(any(c.isdigit() for c in t) for t in tokens) / len(tokens) < 0.25
+
+
+def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozenset(),
+               strict: bool = False) -> TableRead:
     """Read a billing, medication or lab page as rows, or refuse.
 
     Refuses (so the page gets a full read) when the page type has no table
     reader, when too few lines are rows, or when a line that is not a row
-    contains clinical-looking text the reader would otherwise drop.
+    contains clinical-looking text the reader would otherwise drop. With
+    ``strict`` (for pages whose type was inherited, with no Jev answer of
+    their own) any written sentence outside the table also refuses.
     """
     kind = TABLE_KINDS.get(page_type)
     if kind is None:
@@ -124,6 +139,8 @@ def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozens
         hit = clinical_keyword(line)
         if hit:
             return TableRead(False, rows, f"clinical text outside the table ({hit!r}): full read")
+        if strict and _is_sentence(line):
+            return TableRead(False, rows, "written text on an inherited-type page: full read")
     return TableRead(True, rows, f"{len(rows)} {kind} rows")
 
 
@@ -186,3 +203,8 @@ def reader_model(page_type: str | None, chars_to_read: int) -> str:
     if page_type in SMALL_MODEL_TYPES and chars_to_read <= SMALL_MODEL_MAX_CHARS:
         return "small"
     return "large"
+
+
+from chronology.triage import READER_TYPES as _READER_TYPES  # noqa: E402
+
+assert set(TABLE_KINDS) == _READER_TYPES, "triage.READER_TYPES must list the table reader types"

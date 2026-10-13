@@ -287,8 +287,9 @@ def test_jev_cleaning_keeps_a_documents_own_letterhead():
     assert triage.norm_line(head) not in bp and "production notice" in bp
 
 
-def test_heldout_pages_are_well_formed():
-    pages = json.loads((Path(__file__).parents[1] / "scripts/jev/heldout_pages.json").read_text())
+@pytest.mark.parametrize("name", ["heldout_pages.json", "heldout2_pages.json"])
+def test_heldout_pages_are_well_formed(name):
+    pages = json.loads((Path(__file__).parents[1] / "scripts/jev" / name).read_text())
     assert len({p["id"] for p in pages}) == len(pages)
     for p in pages:
         assert p["label"] in jev.PAGE_TYPES
@@ -391,3 +392,53 @@ def test_parallel_documents_match_serial_order():
 
     with ThreadPoolExecutor(4) as pool:
         assert summary(parallel_docs=False) == summary(parallel_docs=True, pool_map=pool.map)
+
+
+def test_extended_labels_add_only_types_that_cannot_hold_a_page_back():
+    assert set(jev.PAGE_TYPES_DETAILED) < set(jev.PAGE_TYPES_EXTENDED)
+    assert not set(jev.EXTRA_PAGE_TYPES) & (triage.SKIPPABLE_TYPES | triage.BILLING_TYPES)
+    assert list(jev.PAGE_TYPES_EXTENDED)[-1] == "other"
+
+
+def test_per_type_threshold_lowers_the_bar_for_clinical_types_only():
+    taus = triage.clinical_type_thresholds(jev.PAGE_TYPES)
+    assert taus["office_visit"] == triage.CLINICAL_TYPE_THRESHOLD
+    assert "fax_cover" not in taus and "billing" not in taus
+    note = {"id": "a", "text": "progress note body"}
+    ask = _scripted({"progress note body": _resp("office_visit", 0.75)})
+    (r,) = triage.triage_pages([note], ask, jev.PAGE_TYPES, type_thresholds=taus)
+    assert r.decision.type_source == "direct" and r.decision.page_type == "office_visit"
+    # a fax cover at the same probability stays unsure: it could hold a page back
+    fax = {"id": "b", "text": "FAX COVER SHEET To: Records From: Clinic Pages: 3"}
+    ask = _scripted({fax["text"]: [_resp("fax_cover", 0.75, "no", 0.99), _resp("fax_cover", 0.75, "no", 0.99)]})
+    (r,) = triage.triage_pages([fax], ask, jev.PAGE_TYPES, type_thresholds=taus)
+    assert r.decision.route == "full"
+
+
+def test_tell_position_puts_page_number_and_first_line_in_the_state():
+    states = []
+
+    def ask(state, qs):
+        states.append(state)
+        return _resp("office_visit", 0.99)
+    pages = [{"id": "a", "doc": "d", "seq": 1, "text": "OFFICE VISIT NOTE\nbody one"},
+             {"id": "b", "doc": "d", "seq": 2, "text": "body two continues"}]
+    triage.triage_pages(pages, ask, jev.PAGE_TYPES, tell_position=True, use_headers=False,
+                        use_templates=False, use_runs=False)
+    joined = "\n".join(states)
+    assert "Page 1 of 2 in its file." in joined
+    assert 'Page 2 of 2 in its file. Page 1 of the file begins: "OFFICE VISIT NOTE"' in joined
+
+
+def test_double_check_marks_order_sensitive_answers_unsure():
+    calls = []
+
+    def ask(state, qs):
+        calls.append(list(qs["page_type"]["criteria"])[0])
+        first_label = list(qs["page_type"]["criteria"])[0]
+        # answers with whichever label is listed first: an order-sensitive guess
+        return _resp(first_label, 0.95)
+    (r,) = triage.triage_pages([{"id": "a", "text": "ambiguous page"}], ask, jev.PAGE_TYPES,
+                               double_check=True, use_second_pass=False)
+    assert r.disagreed and r.decision.type_source == "none"
+    assert r.calls == 2

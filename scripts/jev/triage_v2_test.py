@@ -127,12 +127,19 @@ def fake_ask_v5(state: str, qs: dict) -> dict:
 
 
 HELPERS = ("clean", "labels", "position", "split", "headers")
+# measured on top of v5: extra labels, per-type thresholds, "page 3 of 5" clue,
+# page type asked twice with the labels reversed
+MORE_HELPERS = ("extra", "tau", "where", "twice")
 
 
 def helpers(cond: str) -> set[str]:
-    if cond.startswith("v5"):
-        return set(HELPERS)
-    return {h for h in HELPERS if f"+{h}" in cond}
+    variant = cond.split("_", 1)[0]
+    found = {h for h in HELPERS + MORE_HELPERS if f"+{h}" in variant}
+    if variant.startswith("v6"):
+        return set(HELPERS) | set(MORE_HELPERS) | found
+    if variant.startswith("v5"):
+        return set(HELPERS) | found
+    return found
 
 
 def score(name: str, pages: list[dict], results: list[triage.PageResult], tau: float,
@@ -243,15 +250,19 @@ def main() -> None:
     all_stats, all_lines, all_rows = [], [], []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for cond in args.conditions:
-            v1, v4 = cond == "v1", cond.startswith(("v4", "v5"))
+            v1, v4 = cond == "v1", cond.startswith(("v4", "v5", "v6"))
             h = helpers(cond)
             v3 = cond.startswith("v3") or v4
             base = next((c for c in CONDITIONS if cond.endswith("_" + c)), "clean")
+            labels = (jev.PAGE_TYPES_V1 if v1 else jev.PAGE_TYPES_EXTENDED if "extra" in h
+                      else jev.PAGE_TYPES_DETAILED if "labels" in h else jev.PAGE_TYPES)
+            more = {"type_thresholds": triage.clinical_type_thresholds(labels) if "tau" in h else None,
+                    "tell_position": "where" in h, "double_check": "twice" in h}
             run_pages = perturb(pages, base, args.seed)
             print(f"running {cond} on {len(run_pages)} pages ...", flush=True)
             results = triage.triage_pages(
                 run_pages, ask,
-                jev.PAGE_TYPES_V1 if v1 else jev.PAGE_TYPES_DETAILED if "labels" in h else jev.PAGE_TYPES,
+                labels,
                 type_threshold=args.tau, clinical_threshold=args.tau,
                 use_context=not v1, use_document=not v1, use_second_pass=not v1,
                 use_safety_nets=not v1, use_templates=v3, use_runs=v3,
@@ -260,7 +271,10 @@ def main() -> None:
                 clean_input="clean" in h, ask_position="position" in h,
                 split_clinical="split" in h, use_headers="headers" in h,
                 glance_chars=next((int(t[5:]) for t in cond.split("_")[0].split("+") if t.startswith("chars")), None),
-                pool_map=pool.map)
+                pool_map=pool.map, **more)
+            for r in results:  # the extra labels are finer kinds of "other" in the hand labels
+                if r.decision.page_type in jev.EXTRA_PAGE_TYPES:
+                    r.decision.page_type = "other"
             stats, lines = score(cond, pages, results, args.tau, v1)
             all_stats.append(stats); all_lines += lines; all_rows += rows(results, cond)
 

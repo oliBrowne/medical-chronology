@@ -80,6 +80,24 @@ PAGE_TYPES_DETAILED: dict[str, str] = {
     "other": "Fits none of the types above: a blank or separator page, an image placeholder, or unreadable text",
 }
 
+# Five more labels for pages that kept landing in "other" on the held-out
+# pages. None of them is a type that can be held back from the page agent;
+# they only give the page agent a better hint. Tests score them as "other".
+EXTRA_PAGE_TYPES: dict[str, str] = {
+    "inpatient_record": ("Inpatient hospital record: admission history and physical, progress note on the "
+                         "ward, hospital course or discharge summary"),
+    "flowsheet": "Nursing flowsheet or vital-signs chart: rows of times with blood pressure, pulse, pain score",
+    "police_report": "Police, incident or traffic crash report",
+    "admin_letter": "Letter or notice about appointments, missed visits, scheduling or an account",
+    "blank_or_separator": ("Blank page, separator or cover sheet inside a production, 'continued' page, or a "
+                           "page holding only a signature"),
+}
+PAGE_TYPES_EXTENDED: dict[str, str] = {
+    **{k: v for k, v in PAGE_TYPES_DETAILED.items() if k != "other"},
+    **EXTRA_PAGE_TYPES,
+    "other": "Fits none of the types above, or unreadable text",
+}
+
 
 def load_api_key(env_file: Path | None = None) -> str:
     """Read TYPESAFE_API_KEY from the environment, falling back to a .env file."""

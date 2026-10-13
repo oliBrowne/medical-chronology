@@ -304,9 +304,13 @@ def glance_text(text: str, bottom_lines: int = GLANCE_BOTTOM_LINES,
     return "\n".join(top) + "\n[... middle of page not shown ...]\n" + "\n".join(bottom)
 
 
-def page_state(text: str, before: str | None = None, after: str | None = None) -> str:
-    """The text Jev sees: this page, with neighbors marked as context only."""
+def page_state(text: str, before: str | None = None, after: str | None = None,
+               where: str | None = None) -> str:
+    """The text Jev sees: this page, with neighbors (and, optionally, where
+    the page sits in its file) marked as context only."""
     parts = []
+    if where:
+        parts.append(f"[WHERE THIS PAGE SITS, context only]\n{where}")
     if before:
         parts.append(f"[END OF PREVIOUS PAGE, context only]\n{before}")
     parts.append(f"[THIS PAGE]\n{text}")
@@ -344,6 +348,7 @@ class PageResult:
     calls: int = 0
     tokens: int = 0
     error: str = ""
+    disagreed: bool = False                                # double_check: the two answers differed
     rows: list = field(default_factory=list)              # table reader output
     new_spans: list[tuple[int, int]] = field(default_factory=list)  # copy-forward: lines to read
     carried_share: float = 0.0
@@ -506,6 +511,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                  confirm_before_hold: bool = True,
                  clean_input: bool = True, ask_position: bool = True,
                  split_clinical: bool = True, use_headers: bool = True,
+                 type_thresholds: dict[str, float] | None = None,
+                 tell_position: bool = False, double_check: bool = False,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
     doc and seq; ``ask(state, questions)`` returns a Jev response. The
@@ -542,6 +549,17 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                         call (a hint only: it is read in full or by a table
                         reader, never held back), with every Nth page still
                         asked as a spot check.
+
+    Measured separately, off by default:
+    ``type_thresholds`` a confidence bar per page type (see
+                        ``clinical_type_thresholds``). Types that can hold a
+                        page back always keep ``type_threshold``.
+    ``tell_position``   Jev is told "page 3 of 5 in its file; page 1 begins
+                        ..." as context.
+    ``double_check``    the page-type question is asked a second time with the
+                        labels in reverse order; if the answers differ the
+                        page is unsure. Doubles first-pass calls.
+    Larger label sets (``jev.PAGE_TYPES_EXTENDED``) are passed as ``labels``.
     """
     from chronology import jev, readers  # local import: readers imports this module
 
@@ -561,8 +579,16 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         i = position[id(r)] + step
         return doc[i] if 0 <= i < len(doc) else None
 
+    can_hold = SKIPPABLE_TYPES | BILLING_TYPES
+
+    def tau(page_type: str | None) -> float:
+        """Confidence bar for a type. Never lowered for types that can hold a page back."""
+        if page_type in can_hold or not type_thresholds:
+            return type_threshold
+        return type_thresholds.get(page_type, type_threshold)
+
     def confident(d: TriageDecision | None) -> bool:
-        return bool(d and d.type_prob is not None and d.type_prob >= type_threshold)
+        return bool(d and d.type_prob is not None and d.type_prob >= tau(d.page_type))
 
     boilerplate = boilerplate_lines([r.text for r in results])
     # a line repeated through one document (its letterhead, "ITEMIZED
@@ -574,6 +600,18 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         if r is None:
             return ""
         return clean_for_jev(r.text, jev_boilerplate) if clean_input else r.text
+
+    def where(r: PageResult) -> str | None:
+        if not tell_position:
+            return None
+        doc = by_doc[r.doc]
+        i = position[id(r)]
+        note = f"Page {i + 1} of {len(doc)} in its file."
+        if i > 0:
+            first = next((x.strip() for x in jev_text(doc[0]).split("\n") if x.strip()), "")[:80]
+            if first:
+                note += f' Page 1 of the file begins: "{first}"'
+        return note
 
     def clinical_q() -> dict:
         return clinical_content_question(detailed=split_clinical)
@@ -587,10 +625,12 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         prev = neighbor(r, -1) if use_context else None
         if glance:
             # no neighbor context at a glance: the second pass adds it for pages that need it
-            state = page_state(glance_text(jev_text(r), glance_bottom_lines, glance_chars))
+            state = page_state(glance_text(jev_text(r), glance_bottom_lines, glance_chars),
+                               where=where(r))
             prev = None
         else:
-            state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None)
+            state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None,
+                               where=where(r))
         r.jev_chars += len(state)
         qs = {"page_type": page_type_question(labels, use_context and prev is not None),
               "clinical": clinical_q()}
@@ -600,11 +640,19 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             resp = ask(state, qs)
             t, tp, probs = _answer(resp, "page_type")
             c, cp = take_clinical(r, resp)
+            r.tokens += resp.get("usage", {}).get("input_tokens", 0)
+            if double_check:
+                q = dict(qs["page_type"], criteria=dict(reversed(list(qs["page_type"]["criteria"].items()))))
+                again = ask(state, {"page_type": q})
+                r.calls += 1
+                r.jev_chars += len(state)
+                r.tokens += again.get("usage", {}).get("input_tokens", 0)
+                if _answer(again, "page_type")[0] != t:
+                    r.disagreed, tp = True, min(tp, 0.5)   # the order changed the answer: unsure
             r.decision = TriageDecision("full", t, tp, c, cp)
             r.type_probs, r.first_pass_type, r.first_pass_prob = probs, t, tp
             if ask_position and "position" in resp.get("answers", {}):
                 r.position, r.position_prob, _ = _answer(resp, "position")
-            r.tokens += resp.get("usage", {}).get("input_tokens", 0)
         except Exception as err:  # noqa: BLE001 - fail open
             r.error = str(err)[:200]
             r.decision = TriageDecision("full", reason="error: fail open", type_source="none")
@@ -625,7 +673,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         """Ask both questions again on the full page (glance mode)."""
         d = r.decision
         prev = neighbor(r, -1) if use_context else None
-        state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None)
+        state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None,
+                           where=where(r))
         r.jev_chars += len(state)
         qs = {"page_type": page_type_question(labels, use_context and prev is not None),
               "clinical": clinical_q()}
@@ -742,7 +791,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         d = r.decision
         if d.type_source in ("template", "run", "header"):
             return False
-        return d.route != "duplicate" and (d.type_prob is None or d.type_prob < type_threshold)
+        return d.route != "duplicate" and (d.type_prob is None or d.type_prob < tau(d.page_type))
 
     # 3. borrow a confident neighbor's type within the document (hint only)
     if use_document:
@@ -782,13 +831,13 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             if clinical_unsure:
                 qs["clinical"] = clinical_q()
             state = page_state(jev_text(r), jev_text(prev)[-WIDE_CONTEXT_CHARS:] if prev else None,
-                               jev_text(nxt)[:CONTEXT_CHARS] if nxt else None)
+                               jev_text(nxt)[:CONTEXT_CHARS] if nxt else None, where=where(r))
             r.jev_chars += len(state)
             try:
                 resp = ask(state, qs)
                 t, tp, _ = _answer(resp, "page_type")
                 r.tokens += resp.get("usage", {}).get("input_tokens", 0)
-                if tp >= type_threshold:
+                if tp >= tau(t):
                     r.decision.page_type, r.decision.type_prob = t, tp
                     r.decision.type_source = "second_pass"
                 if clinical_unsure:
@@ -861,3 +910,13 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             sure = d.type_source in ("direct", "second_pass", "template")
             r.model = readers.reader_model(d.page_type if sure else None, r.chars_to_agent)
     return results
+
+
+CLINICAL_TYPE_THRESHOLD = 0.70
+
+
+def clinical_type_thresholds(labels: dict[str, str], value: float = CLINICAL_TYPE_THRESHOLD) -> dict[str, float]:
+    """A lower confidence bar for the types that are read anyway (the page
+    type is then only a hint for the page agent). Types that can hold a page
+    back are left out, so they keep the global threshold."""
+    return {t: value for t in labels if t not in SKIPPABLE_TYPES | BILLING_TYPES}

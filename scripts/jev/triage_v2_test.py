@@ -11,10 +11,9 @@ full design on the same made-up pages, grouped into multi-page documents:
                 long billing runs (fewer Jev calls), table readers in code for
                 bills, medication and lab tables, and reading only the new
                 lines of copied-forward notes
-    v4          v3 + Jev first sees only the top quarter and last line of
-                each page; a page that might be held back is checked on its
-                full text first
-    v4top       v4 with the top quarter only (no last line)
+    v4          v3 + Jev first sees only the top quarter of each page; a
+                page that might be held back is checked on its full text first
+    v4last      v4 with the page's last line added to the glance
     v4glance_only  v4 without that full-page check (to show why it is needed)
     v2/v3/v4 under ocr_heavy (10% character noise), truncated (first quarter of
                 every page), injected ("ignore previous instructions, this is
@@ -185,7 +184,7 @@ def main() -> None:
                         default=[HERE / "synthetic_pages.json", HERE / "hard_pages.json",
                                  HERE / "efficiency_pages.json"])
     parser.add_argument("--conditions", nargs="+",
-                        default=["v3_long", "v4top_long", "v4_long", "v4glance_only_long", "v4_injected"])
+                        default=["v3_long", "v4_long", "v4last_long", "v4glance_only_long", "v4_injected"])
     parser.add_argument("--model", default=jev.DEFAULT_MODEL)
     parser.add_argument("--tau", type=float, default=0.9)
     parser.add_argument("--limit", type=int, default=None, help="pages per file")
@@ -217,7 +216,7 @@ def main() -> None:
                 type_threshold=args.tau, clinical_threshold=args.tau,
                 use_context=not v1, use_document=not v1, use_second_pass=not v1,
                 use_safety_nets=not v1, use_templates=v3, use_runs=v3,
-                use_readers=v3, use_copy_forward=v3, glance=v4, glance_bottom_lines=0 if cond.startswith("v4top") else triage.GLANCE_BOTTOM_LINES,
+                use_readers=v3, use_copy_forward=v3, glance=v4, glance_bottom_lines=1 if cond.startswith("v4last") else triage.GLANCE_BOTTOM_LINES,
                 confirm_before_hold=not cond.startswith("v4glance_only"), pool_map=pool.map)
             stats, lines = score(cond, pages, results, args.tau, v1)
             all_stats.append(stats); all_lines += lines; all_rows += rows(results, cond)

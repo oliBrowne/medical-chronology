@@ -128,6 +128,8 @@ _CLINICAL_PATTERNS = [
                r"diagnos\w*|impression|assessment|complain\w*|symptom\w*|c/o|"
                r"radiat\w*|sprain|strain|swelling|bruis\w*|laceration|"
                r"pt reports|patient reports|worse|improv\w*|allerg\w*|NKDA)\b", re.I),
+    # orders and treatment, for a bare line like "MRI ordered" low on an admin page
+    re.compile(r"\b(MRI|CT|x-?rays?|ordered|referr\w*|prescri\w*|surg\w*|injections?)\b", re.I),
 ]
 
 
@@ -228,7 +230,7 @@ def risk_coverage(confidences: list[float], correct: list[bool],
 
 CONTEXT_CHARS = 600         # end of the previous page sent with each page
 GLANCE_TOP_SHARE = 0.25     # glance mode: top quarter of the page ...
-GLANCE_BOTTOM_LINES = 1     # ... plus its last line (0: top only)
+GLANCE_BOTTOM_LINES = 0     # ... plus its last lines (0: top only, measured best)
 GLANCE_MIN_CHARS = 400      # pages shorter than this are sent whole
 WIDE_CONTEXT_CHARS = 1500   # second pass: more of the previous page, plus the next
 

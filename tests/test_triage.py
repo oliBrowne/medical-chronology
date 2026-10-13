@@ -147,7 +147,7 @@ def test_safety_nets():
 
 def test_glance_keeps_top_and_last_lines():
     text = "HEADER LINE\n" + "\n".join(f"middle line {i} with some words" for i in range(40)) + "\nLAST LINE"
-    g = triage.glance_text(text)
+    g = triage.glance_text(text, bottom_lines=1)
     assert g.startswith("HEADER LINE") and g.endswith("LAST LINE")
     assert "middle of page not shown" in g and len(g) < len(text) / 2
     assert triage.glance_text("short page") == "short page"
@@ -185,3 +185,8 @@ def test_boilerplate_does_not_make_pages_duplicates():
     res = triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_templates=True)
     assert not any(r.decision.route == "duplicate" for r in res)
     assert not any(r.decision.type_source == "template" for r in res)
+
+
+def test_keyword_catches_bare_order_line():
+    assert triage.clinical_keyword("Fax cover sheet\nPages: 3\nMRI ordered") == "MRI"
+    assert triage.clinical_keyword("Fax cover sheet\nPages: 3\nPlease call to confirm") is None

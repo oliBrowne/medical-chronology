@@ -1,5 +1,8 @@
 """Step 4: findings -> an ordered chronology.
 
+Dates are resolved before this stage, by ``tools.resolve_date`` (see
+``tools.dates``); this stage only orders and merges them.
+
 - Sort by the clinically relevant event date (never file dates). Undated
   findings stay in the list, last, instead of being guessed or dropped.
 - Merge repeated statements of the same fact (same date, text, category and

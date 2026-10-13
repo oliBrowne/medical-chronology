@@ -1,1 +1,4 @@
-"""Model loops. Each agent has one job, a fixed tool list and a step cap."""
+"""One file per agent: its prompt, the tool names it may call, and its step cap.
+
+All agents run through ``loop.run_agent`` with any ``llm.base.ChatClient``.
+"""

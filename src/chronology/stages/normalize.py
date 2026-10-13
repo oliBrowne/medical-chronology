@@ -1,4 +1,4 @@
-"""Step 3: the agentic part. Map each finding to UMLS / SNOMED CT.
+"""Step 3: map each unclear phrase to UMLS / SNOMED CT via ``agents.term_resolver``.
 
 Bounded ReAct loop per finding: propose a candidate, look it up in UMLS,
 judge whether the evidence is sufficient, and if not pull more surrounding

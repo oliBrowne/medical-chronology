@@ -1,84 +1,88 @@
-"""The tool-calling loop every agent runs on.
+"""Shared tool-calling loop: step cap and a log of every tool call.
 
-Send the conversation, run whatever tools the model asks for, feed the results
-back, and stop when the model calls the *finish tool* successfully. The finish
-tool does its own validation: if it fails, the error goes back to the model so
-it can fix its answer. Every tool call is kept in ``trace`` for audit.
+Runs until the model answers without tool calls, or until it calls the
+*finish tool* successfully (``finish_tool``), or until ``max_steps``. A finish
+tool does its own validation: if it raises, the error goes back to the model so
+it can fix its answer.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
-from chronology.llm import ollama
-from chronology.tools.registry import ToolBox
+from pydantic import BaseModel, Field
+
+from chronology.llm.base import ChatClient, MalformedToolCall
+from chronology.tools.registry import Registry
 
 
-@dataclass
-class AgentResult:
-    status: Literal["finished", "max_steps", "no_tool_call"]
-    output: dict[str, Any] | None  # the arguments of the accepted finish call
+class ToolCallRecord(BaseModel):
+    step: int
+    name: str
+    arguments: dict[str, Any]
+    result: Any = None
+    error: str | None = None
+
+
+class AgentResult(BaseModel):
+    content: str | None
+    stopped: str  # "final" or "step_cap"
     steps: int
-    trace: list[dict[str, Any]] = field(default_factory=list)
+    log: list[ToolCallRecord] = Field(default_factory=list)
+    output: dict[str, Any] | None = None  # the arguments of the accepted finish call
 
 
-def run_agent(
-    system: str,
-    task: str,
-    toolbox: ToolBox,
-    *,
-    finish_tool: str,
-    max_steps: int = 6,
-    chat_fn: Callable[..., dict[str, Any]] = ollama.chat,
-    **chat_kwargs: Any,
-) -> AgentResult:
-    """Run one agent to completion. ``chat_fn`` is injectable so tests can fake the model."""
+def run_agent(client: ChatClient, registry: Registry, system: str, user: str,
+              tool_names: list[str], max_steps: int,
+              response_schema: dict | None = None,
+              finish_tool: str | None = None) -> AgentResult:
+    """Run until the model answers without tool calls or ``max_steps`` is hit.
+
+    Only tools named in ``tool_names`` are offered or executed. With
+    ``finish_tool``, a successful call to it ends the run and its arguments
+    are returned in ``output``; a plain-text answer before that gets one nudge.
+    """
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": task},
+        {"role": "user", "content": user},
     ]
-    trace: list[dict[str, Any]] = []
+    specs = registry.specs(tool_names)
+    log: list[ToolCallRecord] = []
     nudged = False
-
     for step in range(1, max_steps + 1):
         try:
-            reply = chat_fn(messages, tools=toolbox.specs(), **chat_kwargs)
-        except RuntimeError as err:
-            # The model wrote a tool call that Ollama could not parse (malformed
-            # JSON). Count it as a failed step and ask again; anything else is a
-            # real failure (server down, bad request) and propagates.
-            if "error parsing tool call" not in str(err):
-                raise
-            trace.append({"step": step, "tool": None, "arguments": None,
-                          "result": {"ok": False, "error": "tool call was not valid JSON"}})
+            reply = client.chat(messages, tools=specs, response_schema=response_schema)
+        except MalformedToolCall as err:
+            log.append(ToolCallRecord(step=step, name="(unparseable tool call)", arguments={},
+                                      error="tool call was not valid JSON"))
             messages.append({"role": "user", "content": (
-                f"Your last tool call was not valid JSON. Call {finish_tool} again with valid "
-                "JSON that uses exactly the field names in the tool's parameter schema.")})
+                "Your last tool call was not valid JSON. Call the tool again with valid JSON "
+                "that uses exactly the field names in its parameter schema.")})
             continue
-        messages.append(reply)
-        calls = reply.get("tool_calls") or []
-
-        if not calls:
-            if nudged:
-                return AgentResult("no_tool_call", None, step, trace)
-            nudged = True
-            messages.append({"role": "user",
-                             "content": f"Call a tool. When you are done, call {finish_tool}."})
-            continue
-
-        for call in calls:
-            name = call["function"]["name"]
-            arguments = call["function"].get("arguments") or {}
-            result = toolbox.call(name, arguments)
-            trace.append({"step": step, "tool": name, "arguments": arguments, "result": result})
-            if name == finish_tool and result["ok"]:
-                if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
-                return AgentResult("finished", arguments, step, trace)
-            messages.append({"role": "tool", "tool_name": name,
-                             "content": json.dumps(result, default=str)})
-
-    return AgentResult("max_steps", None, max_steps, trace)
+        if not reply.tool_calls:
+            if finish_tool and not nudged:
+                nudged = True
+                messages.append({"role": "assistant", "content": reply.content})
+                messages.append({"role": "user",
+                                 "content": f"Call a tool. When you are done, call {finish_tool}."})
+                continue
+            return AgentResult(content=reply.content, stopped="final", steps=step, log=log)
+        messages.append({"role": "assistant", "content": reply.content,
+                         "tool_calls": [c.model_dump() for c in reply.tool_calls]})
+        for call in reply.tool_calls:
+            record = ToolCallRecord(step=step, name=call.name, arguments=call.arguments)
+            try:
+                if call.name not in tool_names:
+                    raise KeyError(f"tool {call.name!r} is not allowed for this agent")
+                record.result = registry.call(call.name, call.arguments)
+                content = json.dumps(record.result, default=str)
+            except Exception as err:  # the model sees the error and can retry
+                record.error = f"{type(err).__name__}: {err}"
+                content = json.dumps({"error": record.error})
+            log.append(record)
+            if call.name == finish_tool and record.error is None:
+                return AgentResult(content=reply.content, stopped="final", steps=step,
+                                   log=log, output=call.arguments)
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
+    return AgentResult(content=None, stopped="step_cap", steps=max_steps, log=log)

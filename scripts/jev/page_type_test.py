@@ -26,7 +26,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from chronology import jev  # noqa: E402
+from chronology.llm import jev  # noqa: E402
 
 
 def summarize(rows: list[dict]) -> str:

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from helpers import ConstantChatClient, submit_reply
+
 from chronology.pipeline import case_files, file_role, run_case
 
 RECORDS = """Clinic
@@ -36,9 +38,9 @@ def make_case(tmp_path: Path) -> Path:
     return case
 
 
-def empty_submission(messages, **kwargs):
-    call = {"function": {"name": "submit_page", "arguments": {"dates": [], "findings": []}}}
-    return {"role": "assistant", "content": "", "tool_calls": [call]}
+def empty_submission():
+    """A model that submits nothing for every page."""
+    return ConstantChatClient(submit_reply([], []))
 
 
 def test_roles_come_from_the_file_name():
@@ -56,7 +58,7 @@ def test_every_markdown_file_is_found_except_readmes_and_non_markdown(tmp_path):
 
 def test_all_files_are_read_and_each_gets_its_role(tmp_path):
     case = make_case(tmp_path)
-    path = run_case(case, tmp_path / "out", chat_fn=empty_submission)
+    path = run_case(case, tmp_path / "out", client=empty_submission())
     data = json.loads(path.read_text())
 
     sources = {s["path"]: s for s in data["sources"]}
@@ -73,7 +75,7 @@ def test_all_files_are_read_and_each_gets_its_role(tmp_path):
 
 def test_claims_and_evidence_go_to_separate_files(tmp_path):
     case = make_case(tmp_path)
-    folder = run_case(case, tmp_path / "out", chat_fn=empty_submission).parent
+    folder = run_case(case, tmp_path / "out", client=empty_submission()).parent
     assert {p.name for p in folder.iterdir()} == {
         "pages.json", "chronology.json", "chronology.md", "claims.json", "claims.md",
         "merged.json", "merged.md"}

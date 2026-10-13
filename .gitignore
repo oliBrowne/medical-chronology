@@ -57,3 +57,8 @@ htmlcov/
 .idea/
 *.swp
 /Project_Background
+
+# Local databases (term memory etc. hold phrases taken from records)
+*.db
+*.sqlite
+*.sqlite3

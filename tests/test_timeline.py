@@ -1,3 +1,5 @@
+from helpers import ConstantChatClient, submit_reply
+
 from chronology.agents.page_agent import extract_page
 from chronology.schemas import Finding, Page
 from chronology.stages.timeline import build_chronology, build_timeline, date_precision, render_markdown
@@ -47,11 +49,9 @@ def page_text(day, line):
 def extraction(day, line, finding_text):
     page = Page(doc_id="d", page_index=0, bates_label="X 000001", text=page_text(day, line),
                 text_source="native")
-    call = {"function": {"name": "submit_page", "arguments": {
-        "dates": [{"date": day, "role": "service_date"}],
-        "findings": [{"body": finding_text, "category": "symptom", "assertion": "present"}]}}}
-    reply = {"role": "assistant", "content": "", "tool_calls": [call]}
-    return extract_page(page, chat_fn=lambda messages, **kw: reply)
+    reply = submit_reply([{"date": day, "role": "service_date"}],
+                         [{"body": finding_text, "category": "symptom", "assertion": "present"}])
+    return extract_page(page, ConstantChatClient(reply))
 
 
 def test_chronology_joins_events_to_quotes_and_sorts_across_pages():

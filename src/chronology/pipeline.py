@@ -35,6 +35,8 @@ from pathlib import Path
 
 from chronology.agents.page_agent import PageExtraction, extract_page
 from chronology.llm import ollama
+from chronology.llm.base import ChatClient
+from chronology.llm.ollama import OllamaClient
 from chronology.schemas import Page
 from chronology.stages.claims import build_claims, render_claims_markdown
 from chronology.stages.merge import merge_views, render_merged_markdown
@@ -70,10 +72,20 @@ def think_setting(model: str, level: str) -> str | bool | None:
     return level != "off"
 
 
-def run_case(case_dir: Path, out_dir: Path, *, chat_fn=ollama.chat,
+def run(case_dir: Path, out_dir: Path) -> None:
+    """Process one case folder with the defaults. ``out_dir`` must be gitignored."""
+    run_case(case_dir, out_dir)
+
+
+def run_case(case_dir: Path, out_dir: Path, *, client: ChatClient | None = None,
              model: str = ollama.DEFAULT_MODEL, workers: int = 1,
              include_trace: bool = True, think: str | bool | None = "low") -> Path:
-    """Read every file in the case folder, run the page agent on the evidence, save JSON."""
+    """Read every file in the case folder, run the page agent on the evidence, save JSON.
+
+    ``client`` is any ``ChatClient``; the default is a local Ollama model, built
+    from ``model`` and ``think``.
+    """
+    client = client or OllamaClient(model, think=think)
     files = case_files(case_dir)
     if not files:
         raise FileNotFoundError(f"no .md files found in {case_dir}")
@@ -98,7 +110,7 @@ def run_case(case_dir: Path, out_dir: Path, *, chat_fn=ollama.chat,
     def run_page(job: tuple[Page, str, str]) -> PageExtraction:
         page = job[0]
         started = time.time()
-        result = extract_page(page, chat_fn=chat_fn, model=model, think=think)
+        result = extract_page(page, client)
         result.seconds = time.time() - started
         print(f"  {job[1]} {page.bates_label or page.page_index}: {result.status}, "
               f"{len(result.findings)} findings, {result.steps} steps, "
@@ -110,8 +122,8 @@ def run_case(case_dir: Path, out_dir: Path, *, chat_fn=ollama.chat,
 
     output = {
         "case": case_dir.name,
-        "model": model,
-        "think": think,
+        "model": getattr(client, "model", model),
+        "think": getattr(client, "think", think),
         "sources": sources,
         "pages": [{"file": job[1], "role": job[2], **r.to_dict(include_trace=include_trace)}
                   for job, r in zip(jobs, results)],

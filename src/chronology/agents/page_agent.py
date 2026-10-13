@@ -20,15 +20,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from chronology.agents.loop import AgentResult, run_agent
-from chronology.llm import ollama
+from chronology.agents.loop import ToolCallRecord, run_agent
+from chronology.llm.base import ChatClient
 from chronology.schemas import EvidenceSpan, Finding, Page
 from chronology.stages.flags import flag_findings, uncovered_lines
 from chronology.stages.tables import vital_findings, vital_table_rows
 from chronology.tools.quotes import find_quotes
-from chronology.tools.registry import Tool, ToolBox, object_schema
+from chronology.tools.registry import Registry, Tool, object_schema
 from chronology.tools.resolve_date import resolve_date
 
+MAX_STEPS = 8
+TOOLS = ["submit_page"]
 DATE_ROLES = ("service_date", "incident_date", "prepared_date", "signature", "print",
               "certification", "dob", "mentioned_event", "other")
 CATEGORIES = ("symptom", "exam_finding", "vital", "imaging", "diagnosis", "procedure",
@@ -333,35 +335,47 @@ def _assemble(page: Page, payload: dict[str, Any],
     return out
 
 
-def extract_page(page: Page, *, chat_fn=ollama.chat, model: str = ollama.DEFAULT_MODEL,
-                 max_steps: int = 8, think: str | None = "low") -> PageExtraction:
-    """Run the page agent on one page."""
+def _trace(log: list[ToolCallRecord]) -> list[dict[str, Any]]:
+    """The loop's tool-call log as plain dicts for ``pages.json``."""
+    return [{"step": r.step, "tool": r.name, "arguments": r.arguments,
+             "result": ({"ok": False, "error": r.error} if r.error
+                        else {"ok": True, "result": r.result})} for r in log]
+
+
+def extract_page(page: Page, client: ChatClient, *, max_steps: int = MAX_STEPS) -> PageExtraction:
+    """Run the page agent on one page with any ``ChatClient``."""
     # One tool: submit_page checks every quote and date against the page itself,
     # so a separate verify tool only cost the model steps (it checked quotes one
     # by one and ran out of steps before submitting).
     state = _Submission()
-    toolbox = ToolBox([_submit_tool(page, state)])
+    registry = Registry()
+    registry.register(_submit_tool(page, state))
     task = (f"Page {page.bates_label or page.page_index} "
             f"({page.page_type or 'type unknown'}):\n\n{page.text}")
-    result: AgentResult = run_agent(
-        SYSTEM_PROMPT, task, toolbox, finish_tool="submit_page", max_steps=max_steps,
-        chat_fn=chat_fn, model=model, think=think)
+    result = run_agent(client, registry, SYSTEM_PROMPT, task, TOOLS, max_steps,
+                       finish_tool="submit_page")
+    finished = result.output is not None
+    outcome = "finished" if finished else ("max_steps" if result.stopped == "step_cap"
+                                           else "no_tool_call")
+    trace = _trace(result.log)
 
-    if result.status != "finished" and not state.dates and not state.findings:
-        return PageExtraction(page=page, status=result.status, steps=result.steps,
-                              trace=result.trace,
-                              unresolved=[f"page agent did not finish ({result.status})"])
+    if not finished and not state.dates and not state.findings:
+        return PageExtraction(page=page, status=outcome, steps=result.steps, trace=trace,
+                              unresolved=[f"page agent did not finish ({outcome})"])
 
     # Whatever was accepted is kept, even if the model never got every item
     # through. The page is "partial" and the leftovers go to the review queue.
     out = _assemble(page, state.payload(),
                     skip=[(row.start, row.end) for row in vital_table_rows(page.text)])
-    if result.status != "finished":
+    if not finished:
         out.status = "partial"
-        out.unresolved.append(f"page agent did not finish ({result.status}); "
+        out.unresolved.append(f"page agent did not finish ({outcome}); "
                               f"kept the {len(out.findings)} findings accepted so far")
         out.unresolved += [f"rejected and not corrected: {r}" for r in state.rejected]
     out.flags = flag_findings(out.findings, out.spans, page)
     out.uncovered = uncovered_lines(page, out.spans, out.dates, out.facility)
-    out.steps, out.trace = result.steps, result.trace
+    out.steps, out.trace = result.steps, trace
     return out
+
+
+run = extract_page  # the entry point named in the team skeleton

@@ -1,1 +1,4 @@
-"""Tools the agents can call: plain functions, no model inside any of them."""
+"""Plain functions the agents can call. No model calls in here.
+
+Tools never import from ``stages``; stages import from tools.
+"""

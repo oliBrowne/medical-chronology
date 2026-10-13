@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from helpers import ConstantChatClient, submit_reply
+
 from chronology.agents.page_agent import extract_page
 from chronology.schemas import Page
 from chronology.stages.claims import build_claims, claim_type, heading_before, render_claims_markdown
@@ -23,10 +25,7 @@ FINDINGS = [
 
 
 def claims():
-    call = {"function": {"name": "submit_page",
-                         "arguments": {"dates": DATES, "findings": FINDINGS}}}
-    reply = {"role": "assistant", "content": "", "tool_calls": [call]}
-    extraction = extract_page(PAGE, chat_fn=lambda messages, **kw: reply)
+    extraction = extract_page(PAGE, ConstantChatClient(submit_reply(DATES, FINDINGS)))
     return build_claims("case_summary.md", extraction)
 
 
@@ -75,9 +74,7 @@ def test_a_date_range_in_the_treatment_table_gives_start_and_end():
     text = "# Treatment Summary\n\n| Date | Provider | Summary |\n|---|---|---|\n" \
            "| 04/03/2024 – 05/15/2024 | Peak PT | 12 visits |\n"
     page = Page(doc_id="s", page_index=0, text=text, text_source="native")
-    reply = {"role": "assistant", "content": "", "tool_calls": [
-        {"function": {"name": "submit_page", "arguments": {"dates": [], "findings": []}}}]}
-    result = build_claims("s.md", extract_page(page, chat_fn=lambda messages, **kw: reply))
+    result = build_claims("s.md", extract_page(page, ConstantChatClient(submit_reply([], []))))
     assert (result[0]["about_date"], result[0]["about_date_end"]) == ("2024-04-03", "2024-05-15")
 
 

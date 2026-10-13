@@ -7,7 +7,8 @@ Plan:
 - OCR pages with no usable text (some files are image-only scans).
 - Attach the Bates label from ``bates.parse_filename`` and cross-check it
   against ``bates.find_stamps`` on the page.
-- Triage: tag each page's type (billing, MAR, flowsheet, therapy note, consult,
+- Triage with Jev (``llm.jev``, once zero data retention is on): tag
+  each page's type (billing, MAR, flowsheet, therapy note, consult,
   discharge summary, ...) from the filename and the first lines of text, and
   mark near-duplicate pages, so later stages can skip or deprioritize them.
   Rank pages rather than dropping them; every page stays searchable.

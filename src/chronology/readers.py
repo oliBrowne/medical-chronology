@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from chronology.triage import clinical_keyword
+from chronology.triage import clinical_keyword, norm_line
 
 _DATE = re.compile(r"\b(\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2})\b")
 _ICD = re.compile(r"\b[A-TV-Z]\d{2}\.[0-9A-Z]{1,4}\b")
@@ -97,8 +97,10 @@ def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozens
         return TableRead(False, [], f"no table reader for {page_type}")
     rows, kept, leftovers, nonempty = [], [], [], 0
     for s, e, line in _lines(text):
-        if not line.strip() or (ignore and _bp_norm(line) in ignore):
-            continue  # blank, or production boilerplate printed on many pages
+        if not line.strip():
+            continue
+        if ignore and norm_line(line) in ignore and not (clinical_keyword(line) or _ALLERGY.search(line)):
+            continue  # production boilerplate printed on many pages, with nothing clinical in it
         nonempty += 1
         row = _row(kind, s, e, line)
         if row:
@@ -125,15 +127,9 @@ def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozens
     return TableRead(True, rows, f"{len(rows)} {kind} rows")
 
 
-def _bp_norm(line: str) -> str:
-    from chronology.triage import norm_line
-    return norm_line(line)
-
-
 # --- copied-forward notes --------------------------------------------------
 
-def _norm(line: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9 ]", " ", line.lower()).split())
+_norm = norm_line
 
 
 MIN_LINE_WORDS = 4      # shorter lines (headers, "Plan:") are always treated as new

@@ -40,7 +40,9 @@ def test_duplicate_index_links_near_copies():
     base = ("Patient seen in clinic today for neck pain after a rear-end collision last week. "
             "Exam shows paraspinal tenderness and reduced rotation. Plan physical therapy twice weekly.")
     assert index.check_and_add("p1", base) is None
-    assert index.check_and_add("p2", "FAX 03/22/2024 page 3 " + base) == "p1"
+    assert index.check_and_add("p2", "COPY\n" + base) == "p1"
+    # a stamp line is removed before the check (clean_for_jev), so it never counts
+    assert index.check_and_add("p2b", triage.clean_for_jev("04/22/2024 09:14 FROM 555-0100 FAX P.003\n" + base)) == "p1"
     assert index.check_and_add("p3", "MRI lumbar spine shows a small L4-L5 disc bulge without stenosis or root contact.") is None
     assert index.check_and_add("p4", "Page intentionally left blank.") is None
     assert index.check_and_add("p5", "Page intentionally left blank.") is None  # too short to call
@@ -292,3 +294,66 @@ def test_heldout_pages_are_well_formed():
         assert p["label"] in jev.PAGE_TYPES
         assert p["clinical"] in triage.CLINICAL_CONTENT
         assert p["text"].strip()
+
+def test_longer_page_containing_a_short_one_is_not_its_duplicate():
+    index = triage.DuplicateIndex()
+    stub = "EMERGENCY DEPARTMENT PHYSICIAN RECORD Example General Hospital arrival by private vehicle"
+    assert index.check_and_add("p1", stub) is None
+    note = stub + (" Chief complaint neck pain after collision. Exam paraspinal tenderness. "
+                   "Impression cervical strain. Discharged with ibuprofen.")
+    assert index.check_and_add("p2", note) is None
+
+
+def test_copy_with_an_added_clinical_word_is_not_a_duplicate():
+    index = triage.DuplicateIndex()
+    base = ("Physical therapy daily note. Exercises completed as planned: chin tucks, rows, "
+            "wall angels, thoracic extension. Next visit Thursday.")
+    assert index.check_and_add("p1", base) is None
+    assert index.check_and_add("p2", base + " Swelling noted.") is None
+
+
+def test_stamp_cleaning_keeps_clinical_lines():
+    for line in ["04/02/2024 14:22 Report given to RN, P 88 irregular", "Tylenol 1000",
+                 "Page 2: pain worse at night"]:
+        assert triage.clean_for_jev("HEADER\n" + line) == "HEADER\n" + line
+
+
+def _glance_aware(page_type, hidden_word):
+    """Jev stand-in that only sees ``hidden_word`` when it reads the full page."""
+    def ask(state, qs):
+        page = state.split("[THIS PAGE]\n", 1)[1]
+        c = "yes" if hidden_word in page else "no"
+        return {"answers": {"page_type": {"choice": page_type, "probabilities": {page_type: 0.99}},
+                            "clinical": {"choice": c, "probabilities": {c: 0.99}}}}
+    return ask
+
+
+def test_glance_template_is_confirmed_on_the_full_page_first():
+    middle = "\n".join(f"routing detail number {i} for the records office" for i in range(30))
+    form = "RECORDS RELEASE FORM\nRequester: Example Law Group\n" + middle
+    pages = [{"id": "a", "doc": "a", "text": form + "\nHANDWRITTEN: zzclinical"},
+             {"id": "b", "doc": "b", "text": form + "\nsigned"}]
+    res = {r.id: r for r in triage.triage_pages(pages, _glance_aware("records_admin", "zzclinical"),
+                                                use_safety_nets=False)}
+    assert res["a"].confirmed and res["a"].decision.route == "full"
+    assert res["b"].decision.type_source != "template"
+
+
+def test_glance_confirms_billing_when_no_table_reader_checks_it():
+    middle = "\n".join(f"04/{i % 28 + 1:02d}/24  97110  Therapeutic exercise  $96.00" for i in range(30))
+    text = "ITEMIZED STATEMENT\n" + middle + "\nzzclinical addendum"
+    (r,) = triage.triage_pages([{"id": "a", "text": text}], _glance_aware("billing", "zzclinical"),
+                               use_readers=False, use_safety_nets=False)
+    assert r.confirmed and r.decision.route == "full"
+
+
+def test_poor_quality_page_never_goes_to_a_table_reader():
+    rows = "\n".join(f"ibuprofen {i}00 mg tid" for i in range(2, 8))
+    text = "MEDICATION LIST\n" + rows + "\n" + " ".join(["c0mpl@ins", "n€ck", "p4in", "~~", "|x|"] * 4)
+
+    def ask(state, qs):
+        return {"answers": {"page_type": {"choice": "medication_record", "probabilities": {"medication_record": 0.99}},
+                            "clinical": {"choice": "table", "probabilities": {"table": 0.99}}}}
+
+    (r,) = triage.triage_pages([{"id": "a", "text": text}], ask)
+    assert r.decision.route == "full"

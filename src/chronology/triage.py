@@ -214,15 +214,23 @@ class DuplicateIndex:
     """Exact pairwise index; fine for one case (thousands of pages). Swap in
     MinHash/LSH if a production run gets slow."""
     threshold: float = DUPLICATE_CONTAINMENT
-    _seen: list[tuple[str, set[str]]] = field(default_factory=list)
+    _seen: list[tuple[str, set[str], set[str]]] = field(default_factory=list)   # id, shingles, words
 
     def check_and_add(self, page_id: str, text: str) -> str | None:
+        """The earlier page this one copies, or None. Only the new page's
+        coverage counts: a long page that merely contains a short earlier
+        page (a header stub, then the full note) is not its duplicate. A copy
+        whose few added words look clinical is not a duplicate either."""
         sh = shingles(text)
+        words = set(_WORD.findall(text.lower()))
         if len(sh) >= MIN_SHINGLES:
-            for other_id, other in self._seen:
-                if len(other) >= MIN_SHINGLES and containment(sh, other) >= self.threshold:
-                    return other_id
-        self._seen.append((page_id, sh))
+            for other_id, other, other_words in self._seen:
+                if len(other) < MIN_SHINGLES or len(sh & other) / len(sh) < self.threshold:
+                    continue
+                if clinical_keyword(" ".join(sorted(words - other_words))):
+                    continue
+                return other_id
+        self._seen.append((page_id, sh, words))
         return None
 
 
@@ -368,11 +376,12 @@ def _clinical_answer(resp: dict) -> tuple[str, float, str, float]:
 
 # Lines that are stamps, not content: Bates numbers, "Page 3 of 12", a fax
 # transmission header ("04/02/2024 14:22 FROM 555-0100 P.003"), banners.
+_PHONE = r"(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]\d{4}"
 _STAMP_LINE = re.compile(
     r"^\s*(?:"
     r"(?:page|pg\.?)\s*\d+(?:\s*(?:of|/)\s*\d+)?"                       # Page 3 of 12
-    r"|[A-Z]{2,10}[-_ ]?\d{4,9}"                                          # Bates: ABC0001234
-    r"|\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}.*?\b(?:from|fax|to)\b.*?\bp(?:age|g)?\.?\s*\d+.*"  # fax header
+    r"|(?-i:[A-Z]{2,10}[-_ ]?(?:\d{6,9}|0\d{3,8}))"                       # Bates: ABC0001234, upper case
+    r"|\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}.*\bfrom\b.*" + _PHONE + r".*\bp(?:age|g)?\.?\s*\d{1,4}\b.*"  # fax line
     r"|(?:\*+\s*)?(?:confidential|privileged and confidential)(?:\s*\*+)?"  # banner
     r")\s*$", re.I)
 
@@ -381,7 +390,8 @@ def clean_for_jev(text: str, boilerplate: set[str] | frozenset = frozenset()) ->
     """The page without stamps and production boilerplate, for Jev only. The
     code checks (keywords, text quality, readers) always see the raw page."""
     kept = [x for x in text.split("\n")
-            if not _STAMP_LINE.match(x) and not (boilerplate and norm_line(x) in boilerplate)]
+            if clinical_keyword(x)   # never hide a line that looks clinical
+            or not (_STAMP_LINE.match(x) or (boilerplate and norm_line(x) in boilerplate))]
     out = "\n".join(kept).strip("\n")
     return out if out.strip() else text
 
@@ -393,14 +403,7 @@ HEADER_MIN_WORDS = 3
 def page_header(text: str) -> str | None:
     """The first lines of a (cleaned) page with digits removed, or None if
     too short to identify a document by."""
-    lines = []
-    for line in text.split("\n"):
-        n = " ".join(re.sub(r"[^a-z ]", " ", _DIGITS.sub(" ", line.lower())).split())
-        if n:
-            lines.append(n)
-        if len(lines) == HEADER_LINES:
-            break
-    header = " | ".join(lines)
+    header = " | ".join(n for n, _ in _template_lines(text)[:HEADER_LINES])
     return header if len(header.split()) >= HEADER_MIN_WORDS else None
 
 
@@ -594,6 +597,36 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             r.decision = TriageDecision("full", reason="error: fail open", type_source="none")
         r.calls += 1
 
+    # Pages that could be held back from the page agent on Jev's word: the
+    # skippable types, and billing when no table reader checks it in code.
+    hold_types = SKIPPABLE_TYPES | (frozenset() if use_readers else BILLING_TYPES)
+
+    def needs_confirm(r: PageResult) -> bool:
+        d = r.decision
+        return (not r.confirmed and d.type_source in ("direct", "second_pass")
+                and d.page_type in hold_types)
+
+    def confirm_page(r: PageResult) -> None:
+        """Ask both questions again on the full page (glance mode)."""
+        d = r.decision
+        prev = neighbor(r, -1) if use_context else None
+        state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None)
+        r.jev_chars += len(state)
+        qs = {"page_type": page_type_question(labels, use_context and prev is not None),
+              "clinical": clinical_q()}
+        try:
+            resp = ask(state, qs)
+            t, tp, _ = _answer(resp, "page_type")
+            c, cp = take_clinical(r, resp)
+            r.tokens += resp.get("usage", {}).get("input_tokens", 0)
+            d.page_type, d.type_prob, d.clinical, d.clinical_prob = t, tp, c, cp
+            d.type_source = "direct"
+            r.confirmed = True
+        except Exception as err:  # noqa: BLE001 - cannot confirm: read it
+            r.error = str(err)[:200]
+            d.type_source = "none"
+        r.calls += 1
+
     # 1-2. duplicates, then the first Jev pass. With templates or runs the
     # pass goes in page order, because a page can reuse an earlier decision.
     dups, templates = DuplicateIndex(), TemplateIndex()
@@ -606,7 +639,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
     todo = []
     sequential = use_templates or use_runs or use_headers
     for r in results:
-        core = strip_boilerplate(r.text, boilerplate)
+        core = clean_for_jev(r.text, boilerplate)   # without stamps and boilerplate
         other = dups.check_and_add(r.id, core)
         if other:
             r.decision = TriageDecision("duplicate", duplicate_of=other, reason="near-duplicate", type_source="none")
@@ -614,6 +647,9 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         todo.append(r)
         if not sequential:
             continue
+        h = page_header(clean_for_jev(r.text, jev_boilerplate)) if use_headers else None
+        last_h, src = headers.get(r.doc, (None, None))
+        headers[r.doc] = (h, None)   # a page becomes a header source only if Jev typed it confidently
         if use_templates:
             hit = templates.match(core)
             if hit:
@@ -622,11 +658,9 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                                             type_source="template", reason=f"matches template {src}")
                 continue
         if use_headers:
-            h = page_header(clean_for_jev(r.text, jev_boilerplate))
-            last_h, src = headers.get(r.doc, (None, None))
-            headers[r.doc] = (h, src)
             if (h and h == last_h and src is not None and r.doc not in header_off
                     and src.decision.page_type not in SKIPPABLE_TYPES):
+                headers[r.doc] = (h, src)
                 header_count[r.doc] = header_count.get(r.doc, 0) + 1
                 if header_count[r.doc] % RUN_SPOT_CHECK:
                     r.decision = TriageDecision("full", src.decision.page_type, None, None, None,
@@ -636,6 +670,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                 ask_first(r)  # spot check
                 if r.decision.page_type != src.decision.page_type:
                     header_off.add(r.doc)
+                    headers[r.doc] = (h, None)
                 continue
         if use_runs and run_len.get(r.doc, 0) >= RUN_MIN and r.doc not in run_off:
             inherited[r.doc] = inherited.get(r.doc, 0) + 1
@@ -649,17 +684,23 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             continue
         ask_first(r)
         d = r.decision
-        if use_headers:
-            h = headers[r.doc][0]
-            headers[r.doc] = (h, r if confident(d) and d.type_source == "direct" else None)
+        if use_headers and confident(d) and d.type_source == "direct":
+            headers[r.doc] = (h, r)
         if d.page_type == "billing" and confident(d):
             run_len[r.doc] = run_len.get(r.doc, 0) + 1
         else:
             run_len[r.doc] = 0
-        if (use_templates and confident(d) and d.clinical == "no"
-                and (d.clinical_prob or 0) >= clinical_threshold
-                and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES):
-            templates.add(r.id, d, strip_boilerplate(r.text, boilerplate))
+        def template_worthy() -> bool:
+            return (confident(d) and d.clinical == "no" and (d.clinical_prob or 0) >= clinical_threshold
+                    and d.page_type in SKIPPABLE_TYPES | BILLING_TYPES)
+
+        if use_templates and template_worthy():
+            # a template is copied to later pages without a full-page check,
+            # so in glance mode it is confirmed on its full page first
+            if glance and confirm_before_hold and needs_confirm(r):
+                confirm_page(r)
+            if template_worthy():
+                templates.add(r.id, d, core)
     if not sequential:
         list(pool_map(ask_first, todo))
 
@@ -729,29 +770,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
 
     # 4b. glance mode: before a page can be held back, ask again on the full page
     if glance and confirm_before_hold:
-        def confirm(r: PageResult) -> None:
-            d = r.decision
-            if d.type_source not in ("direct", "second_pass") or d.page_type not in SKIPPABLE_TYPES:
-                return
-            prev = neighbor(r, -1) if use_context else None
-            state = page_state(jev_text(r), jev_text(prev)[-CONTEXT_CHARS:] if prev else None)
-            r.jev_chars += len(state)
-            qs = {"page_type": page_type_question(labels, use_context and prev is not None),
-                  "clinical": clinical_q()}
-            try:
-                resp = ask(state, qs)
-                t, tp, _ = _answer(resp, "page_type")
-                c, cp = take_clinical(r, resp)
-                r.tokens += resp.get("usage", {}).get("input_tokens", 0)
-                d.page_type, d.type_prob, d.clinical, d.clinical_prob = t, tp, c, cp
-                d.type_source = "direct"
-                r.confirmed = True
-            except Exception as err:  # noqa: BLE001 - cannot confirm: read it
-                r.error = str(err)[:200]
-                d.type_source = "none"
-            r.calls += 1
-
-        list(pool_map(confirm, todo))
+        list(pool_map(lambda r: needs_confirm(r) and confirm_page(r), todo))
 
     # 5. route. Only types Jev answered directly (or a matched template) can
     # hold a page back; a table reader only takes a page it can read whole.
@@ -779,8 +798,9 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             continue  # the original billing reader route
         notes = (split_clinical and r.clinical_kind == "notes"
                  and (r.clinical_kind_prob or 0) >= clinical_threshold)
-        if use_readers and not notes and d.type_source != "none" and d.page_type in readers.TABLE_KINDS \
-                and d.route in ("full", "billing"):
+        readable = not use_safety_nets or text_quality(r.text) >= MIN_TEXT_QUALITY
+        if use_readers and readable and not notes and d.type_source != "none" \
+                and d.page_type in readers.TABLE_KINDS and d.route in ("full", "billing"):
             table = readers.read_table(r.text, d.page_type, ignore=boilerplate)
             if table.accepted:
                 d.route, d.reason, r.rows = "reader", table.reason, table.rows
@@ -799,6 +819,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                     d.reason += f"; {cf.carried_share:.0%} copied from earlier pages"
             r.chars_to_agent = (sum(e - s for s, e in r.new_spans) if d.route == "full_new"
                                 else len(r.text))
-            r.model = readers.reader_model(d.page_type if d.type_source != "none" else None,
-                                           r.chars_to_agent)
+            # only a type Jev itself gave confidently can earn the small model
+            sure = d.type_source in ("direct", "second_pass", "template")
+            r.model = readers.reader_model(d.page_type if sure else None, r.chars_to_agent)
     return results

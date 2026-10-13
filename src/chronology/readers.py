@@ -66,8 +66,8 @@ def _row(kind: str, s: int, e: int, line: str) -> Row | None:
         icd = _ICD.findall(line)
         money = _MONEY.search(line)
         cpt = [c for c in _CPT.findall(line) if not _DATE.search(c)]
-        if not (icd or money or cpt):
-            return None
+        if not (icd or money or (cpt and date)):
+            return None   # a bare 5-digit number with no date or amount is not a charge (a ZIP code)
         return Row(kind, s, e, line, date.group(0) if date else None, cpt, icd,
                    money.group(0) if money else None)
     if kind == "medication":
@@ -79,7 +79,7 @@ def _row(kind: str, s: int, e: int, line: str) -> Row | None:
         if not _LAB_HINT.search(line):
             return None
         flag = re.search(r"\((H|L|HH|LL)\)", line)
-        num = re.search(r"\b\d+(?:\.\d+)?\b", line)
+        num = re.search(r"\b\d+(?:\.\d+)?\b", _DATE.sub(" ", line))   # the result, not the date
         return Row(kind, s, e, line, date.group(0) if date else None,
                    value=num.group(0) if num else None, flag=flag.group(1) if flag else None)
     raise ValueError(kind)
@@ -107,7 +107,7 @@ def read_table(text: str, page_type: str, ignore: set[str] | frozenset = frozens
             rows.append(row)
         elif _ALLERGY.search(line):
             kept.append(Row("allergy", s, e, line))
-        elif _DATE.search(line):
+        elif _DATE.search(line) and not clinical_keyword(line):
             # a header or footer date ("Collected 03/14/2024", "Dates of service
             # 04/02/24 - 04/30/24"): kept, and rows without a date inherit it
             kept.append(Row("context", s, e, line, _DATE.search(line).group(0)))

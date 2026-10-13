@@ -543,9 +543,11 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
     for r in results:
         by_doc.setdefault(r.doc, []).append(r)
 
+    position = {id(r): i for doc in by_doc.values() for i, r in enumerate(doc)}
+
     def neighbor(r: PageResult, step: int) -> PageResult | None:
         doc = by_doc[r.doc]
-        i = doc.index(r) + step
+        i = position[id(r)] + step
         return doc[i] if 0 <= i < len(doc) else None
 
     def confident(d: TriageDecision | None) -> bool:
@@ -603,6 +605,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
 
     def needs_confirm(r: PageResult) -> bool:
         d = r.decision
+        if d.type_source == "direct" and glance_text(jev_text(r), glance_bottom_lines) == jev_text(r):
+            return False   # the glance already was the whole page
         return (not r.confirmed and d.type_source in ("direct", "second_pass")
                 and d.page_type in hold_types)
 
@@ -787,7 +791,9 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         elif d.type_source == "header":
             routed = TriageDecision("full", reason=f"{d.reason}: no Jev answer")
         else:
-            direct_prob = d.type_prob if d.type_source in ("direct", "second_pass", "template") else 0.0
+            # the second pass picks among only the top few labels, so its
+            # probability runs high: it can type a page, never hold one back
+            direct_prob = d.type_prob if d.type_source in ("direct", "template") else 0.0
             routed = route(d.page_type, direct_prob, d.clinical, d.clinical_prob,
                            type_threshold, clinical_threshold,
                            text=r.text if use_safety_nets else None)
@@ -799,7 +805,9 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         notes = (split_clinical and r.clinical_kind == "notes"
                  and (r.clinical_kind_prob or 0) >= clinical_threshold)
         readable = not use_safety_nets or text_quality(r.text) >= MIN_TEXT_QUALITY
-        if use_readers and readable and not notes and d.type_source != "none" \
+        # a type borrowed from a neighbor is a guess; reuse chains (run, header)
+        # come from confident pages with spot checks and may use a reader
+        if use_readers and readable and not notes and d.type_source not in ("none", "document") \
                 and d.page_type in readers.TABLE_KINDS and d.route in ("full", "billing"):
             table = readers.read_table(r.text, d.page_type, ignore=boilerplate)
             if table.accepted:

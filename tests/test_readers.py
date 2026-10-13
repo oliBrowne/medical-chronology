@@ -94,3 +94,14 @@ def test_table_reader_keeps_allergies_and_header_dates():
     assert all(r.date == "03/14/2024" for r in rows if r.kind == "lab")
     mar = readers.read_table(PAGES["eff-12"]["text"], "medication_record").rows
     assert any(r.kind == "allergy" and "NKDA" in r.quote for r in mar)
+
+
+def test_dated_clinical_sentence_on_a_bill_sends_it_to_a_full_read():
+    text = ("CLAIM\n04/02/24 99213 Office visit $150.00\n04/03/24 97110 Ther ex $96.00\n"
+            "04/02/24 Pt has severe spasm radiating to left arm, MRI ordered")
+    assert not readers.read_table(text, "billing").accepted
+
+
+def test_zip_code_is_not_a_charge_and_lab_value_is_not_the_date():
+    assert readers._row("billing", 0, 0, "Springfield, IL 62704") is None
+    assert readers._row("lab", 0, 0, "03/14/2024 Glucose 182 mg/dL (H)").value == "182"

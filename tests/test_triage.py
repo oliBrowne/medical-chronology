@@ -244,7 +244,7 @@ def test_written_notes_never_go_to_a_table_reader():
                                           "probabilities": {"medication_record": 0.99}},
                             "clinical": {"choice": c, "probabilities": {c: 0.97}}}}
 
-    (plain,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES, use_readers=True)
+    (plain,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES, split_clinical=False)
     (split,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES, use_readers=True,
                                    split_clinical=True)
     assert plain.decision.route == "reader" and split.decision.route == "full"
@@ -273,5 +273,13 @@ def test_same_header_never_reuses_a_skippable_type():
     pages += [{"id": f"x{i}", "doc": f"x{i}", "text": f"unrelated page {i}"} for i in range(8)]
     seen = []
     triage.triage_pages(pages, _fixed("records_admin", 0.98, clinical="no", seen=seen), jev.PAGE_TYPES,
-                        use_headers=True)
+                        glance=False)
     assert len(seen) == len(pages)
+
+
+def test_jev_cleaning_keeps_a_documents_own_letterhead():
+    head = "EXAMPLE SPINE CLINIC - ITEMIZED STATEMENT"
+    texts = [f"{head}\ncharge line {i}" for i in range(6)] + ["Production notice\nother"] * 6
+    docs = ["bill"] * 6 + [f"d{i}" for i in range(6)]
+    bp = triage.boilerplate_lines(texts, 0.5, docs=docs, min_docs=3)
+    assert triage.norm_line(head) not in bp and "production notice" in bp

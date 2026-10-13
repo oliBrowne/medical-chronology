@@ -453,16 +453,26 @@ def norm_line(line: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9 ]", " ", line.lower()).split())
 
 
-def boilerplate_lines(texts: list[str], min_share: float = BOILERPLATE_MIN_SHARE) -> set[str]:
+JEV_BOILERPLATE_MIN_DOCS = 3
+
+
+def boilerplate_lines(texts: list[str], min_share: float = BOILERPLATE_MIN_SHARE,
+                      docs: list[str] | None = None, min_docs: int = 1) -> set[str]:
     """Normalized lines that appear on many pages (production notices,
     print footers). Duplicate and template checks ignore them, or every page
     of a production would look like every other."""
     from collections import Counter
     df = Counter()
-    for t in texts:
-        df.update({norm_line(x) for x in t.split("\n") if norm_line(x)})
+    in_docs: dict[str, set[str]] = {}
+    for i, t in enumerate(texts):
+        lines = {norm_line(x) for x in t.split("\n") if norm_line(x)}
+        df.update(lines)
+        if docs is not None:
+            for line in lines:
+                in_docs.setdefault(line, set()).add(docs[i])
     cut = max(BOILERPLATE_MIN_PAGES, min_share * len(texts))
-    return {line for line, n in df.items() if n >= cut}
+    return {line for line, n in df.items()
+            if n >= cut and (docs is None or len(in_docs[line]) >= min_docs)}
 
 
 def strip_boilerplate(text: str, boilerplate: set[str]) -> str:
@@ -475,21 +485,24 @@ RUN_MIN = 2           # confident billing pages in a row before later pages inhe
 RUN_SPOT_CHECK = 4    # every Nth inherited page is still asked, to catch a change
 
 
-def triage_pages(pages: list[dict], ask, labels: dict[str, str],
+def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                  type_threshold: float = DEFAULT_TYPE_THRESHOLD,
                  clinical_threshold: float = DEFAULT_CLINICAL_THRESHOLD,
                  use_context: bool = True, use_document: bool = True,
                  use_second_pass: bool = True, use_safety_nets: bool = True,
-                 use_templates: bool = False, use_runs: bool = False,
-                 use_readers: bool = False, use_copy_forward: bool = False,
-                 glance: bool = False, glance_bottom_lines: int = GLANCE_BOTTOM_LINES,
+                 use_templates: bool = True, use_runs: bool = True,
+                 use_readers: bool = True, use_copy_forward: bool = True,
+                 glance: bool = True, glance_bottom_lines: int = GLANCE_BOTTOM_LINES,
                  confirm_before_hold: bool = True,
-                 clean_input: bool = False, ask_position: bool = False,
-                 split_clinical: bool = False, use_headers: bool = False,
+                 clean_input: bool = True, ask_position: bool = True,
+                 split_clinical: bool = True, use_headers: bool = True,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
-    doc and seq; ``ask(state, questions)`` returns a Jev response. Each stage
-    can be switched off so its effect can be measured.
+    doc and seq; ``ask(state, questions)`` returns a Jev response. The
+    defaults are the full design (v5 in the tests: 1/76 pages unsure, Jev
+    reading 19% of the text); each stage can be switched off so its effect
+    can be measured. ``labels`` defaults to ``jev.PAGE_TYPES_DETAILED``, which
+    only helps together with ``clean_input``.
 
     Routes: ``duplicate``; ``skip`` (index only); ``reader`` (a table reader
     in code reads it); ``full`` (page agent reads the page); ``full_new``
@@ -516,7 +529,10 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
                         reader, never held back), with every Nth page still
                         asked as a spot check.
     """
-    from chronology import readers  # local import: readers imports this module
+    from chronology import jev, readers  # local import: readers imports this module
+
+    if labels is None:
+        labels = jev.PAGE_TYPES_DETAILED
 
     results = [PageResult(p["id"], p.get("doc", p["id"]), p.get("seq", 1), p["text"]) for p in pages]
     results.sort(key=lambda r: (r.doc, r.seq))
@@ -533,7 +549,10 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
         return bool(d and d.type_prob is not None and d.type_prob >= type_threshold)
 
     boilerplate = boilerplate_lines([r.text for r in results])
-    jev_boilerplate = boilerplate_lines([r.text for r in results], JEV_BOILERPLATE_MIN_SHARE)
+    # a line repeated through one document (its letterhead, "ITEMIZED
+    # STATEMENT") is a clue to its type; only lines across many documents go
+    jev_boilerplate = boilerplate_lines([r.text for r in results], JEV_BOILERPLATE_MIN_SHARE,
+                                        docs=[r.doc for r in results], min_docs=JEV_BOILERPLATE_MIN_DOCS)
 
     def jev_text(r: PageResult | None) -> str:
         if r is None:
@@ -567,7 +586,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str],
             c, cp = take_clinical(r, resp)
             r.decision = TriageDecision("full", t, tp, c, cp)
             r.type_probs, r.first_pass_type, r.first_pass_prob = probs, t, tp
-            if ask_position:
+            if ask_position and "position" in resp.get("answers", {}):
                 r.position, r.position_prob, _ = _answer(resp, "position")
             r.tokens += resp.get("usage", {}).get("input_tokens", 0)
         except Exception as err:  # noqa: BLE001 - fail open

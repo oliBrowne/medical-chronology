@@ -66,7 +66,7 @@ def test_template_reuse_skips_jev_but_not_a_page_with_a_clinical_comment():
         calls.append(state)
         return inner(state, qs)
 
-    res = {r.id: r for r in triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_templates=True)}
+    res = {r.id: r for r in triage.triage_pages(pages, ask, jev.PAGE_TYPES, glance=False)}
     assert res["eff-10"].decision.type_source == "template"
     assert res["eff-10"].decision.route == "skip"
     assert res["eff-11"].decision.route == "full"   # new comment line: no reuse, keyword net
@@ -82,7 +82,7 @@ def test_billing_run_inherits_and_goes_to_table_reader():
         calls.append(state)
         return inner(state, qs)
 
-    res = triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_runs=True, use_readers=True)
+    res = triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_headers=False, use_templates=False)
     assert [r.decision.type_source for r in res] == ["direct", "direct", "run", "run", "run"]
     assert all(r.decision.route == "reader" for r in res)
     assert len(calls) == 2

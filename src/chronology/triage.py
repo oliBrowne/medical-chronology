@@ -56,6 +56,7 @@ CLINICAL_CONTENT: dict[str, str] = {
 DEFAULT_TYPE_THRESHOLD = 0.90
 DEFAULT_CLINICAL_THRESHOLD = 0.90
 DUPLICATE_CONTAINMENT = 0.90
+DUPLICATE_MAX_NEW_WORDS = 3  # a copy may add a word or two ("COPY", a date), not a sentence
 MIN_SHINGLES = 8  # very short pages (blank, routing-only) are never called duplicates
 MIN_TEXT_QUALITY = 0.90  # share of clean-looking tokens below which a page is never held back
 
@@ -220,15 +221,17 @@ class DuplicateIndex:
         """The earlier page this one copies, or None. Only the new page's
         coverage counts: a long page that merely contains a short earlier
         page (a header stub, then the full note) is not its duplicate. A copy
-        whose few added words look clinical is not a duplicate either."""
+        that adds more than a few words, or any clinical word, is not a duplicate
+        either: it may be an addendum."""
         sh = shingles(text)
         words = set(_WORD.findall(text.lower()))
         if len(sh) >= MIN_SHINGLES:
             for other_id, other, other_words in self._seen:
                 if len(other) < MIN_SHINGLES or len(sh & other) / len(sh) < self.threshold:
                     continue
-                if clinical_keyword(" ".join(sorted(words - other_words))):
-                    continue
+                added = words - other_words
+                if len(added) > DUPLICATE_MAX_NEW_WORDS or clinical_keyword(" ".join(sorted(added))):
+                    continue   # an addendum or amendment: new text to read
                 return other_id
         self._seen.append((page_id, sh, words))
         return None

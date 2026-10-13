@@ -357,3 +357,10 @@ def test_poor_quality_page_never_goes_to_a_table_reader():
 
     (r,) = triage.triage_pages([{"id": "a", "text": text}], ask)
     assert r.decision.route == "full"
+
+
+def test_addendum_without_clinical_words_is_not_a_duplicate():
+    note = "OFFICE VISIT\n" + " ".join(f"Line {i} of the exam documented normal findings in region {i}." for i in range(40))
+    index = triage.DuplicateIndex()
+    index.check_and_add("a", note)
+    assert index.check_and_add("b", note + "\nADDENDUM: patient states the brace helps at work") is None

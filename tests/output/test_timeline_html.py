@@ -159,3 +159,12 @@ def test_relative_dates(iso, index, expected):
 def test_partial_month_sorts_before_days_in_it():
     assert sorted(["2024-03-01", "2024-03", "2024"], key=dates.sort_key) == [
         "2024", "2024-03", "2024-03-01"]
+
+
+def test_outputs_use_unix_line_endings(case):
+    """Re-running on Windows must not turn \n into \r\n and dirty examples/."""
+    _, _, out, root = case
+    for path in [out / "timeline.html", out / "timeline.json",
+                 root / "examples" / "syn-001.bundle.json",
+                 root / "examples" / "syn-001-broken.bundle.json"]:
+        assert b"\r\n" not in path.read_bytes(), path.name

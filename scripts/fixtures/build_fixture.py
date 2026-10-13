@@ -290,9 +290,9 @@ def write_case(case_dir: Path, examples_dir: Path) -> ChronologyBundle:
         doc.sha256 = hashlib.sha256(pdf.read_bytes()).hexdigest()
     examples_dir.mkdir(parents=True, exist_ok=True)
     (examples_dir / "syn-001.bundle.json").write_text(
-        bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        bundle.model_dump_json(indent=2) + "\n", encoding="utf-8", newline="\n")
     (examples_dir / "syn-001-broken.bundle.json").write_text(
-        broken(bundle).model_dump_json(indent=2) + "\n", encoding="utf-8")
+        broken(bundle).model_dump_json(indent=2) + "\n", encoding="utf-8", newline="\n")
     return bundle
 
 

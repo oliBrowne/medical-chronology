@@ -348,8 +348,11 @@ def write_outputs(bundle: ChronologyBundle, *, case_dir: Path | None, out_dir: P
     out_dir.mkdir(parents=True, exist_ok=True)
     html_path = out_dir / "timeline.html"
     json_path = out_dir / "timeline.json"
-    html_path.write_text(render(bundle, case_dir=case_dir, out_dir=out_dir), encoding="utf-8")
-    json_path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    # newline="\n": on Windows write_text would otherwise turn \n into \r\n
+    html_path.write_text(render(bundle, case_dir=case_dir, out_dir=out_dir),
+                         encoding="utf-8", newline="\n")
+    json_path.write_text(bundle.model_dump_json(indent=2) + "\n",
+                         encoding="utf-8", newline="\n")
     return {"html": html_path, "json": json_path}
 
 

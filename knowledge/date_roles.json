@@ -1,0 +1,7 @@
+{
+  "_format": "role -> labels that mark that kind of date on a page",
+  "service": ["Date of Service", "DOS", "Visit Date", "Encounter Date", "Admit Date"],
+  "signed": ["Electronically signed", "Signed by", "Authenticated"],
+  "printed": ["Printed", "Print Date", "Run Date"],
+  "received": ["Received", "Fax received", "Date Received"]
+}

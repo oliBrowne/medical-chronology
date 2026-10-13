@@ -56,3 +56,8 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+# Local databases (term memory etc. hold phrases taken from records)
+*.db
+*.sqlite
+*.sqlite3

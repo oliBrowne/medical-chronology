@@ -403,7 +403,7 @@ def test_extended_labels_add_only_types_that_cannot_hold_a_page_back():
 def test_per_type_threshold_lowers_the_bar_for_clinical_types_only():
     taus = triage.clinical_type_thresholds(jev.PAGE_TYPES)
     assert taus["office_visit"] == triage.CLINICAL_TYPE_THRESHOLD
-    assert "fax_cover" not in taus and "billing" not in taus
+    assert "fax_cover" not in taus and "billing" not in taus and "other" not in taus
     note = {"id": "a", "text": "progress note body"}
     ask = _scripted({"progress note body": _resp("office_visit", 0.75)})
     (r,) = triage.triage_pages([note], ask, jev.PAGE_TYPES, type_thresholds=taus)

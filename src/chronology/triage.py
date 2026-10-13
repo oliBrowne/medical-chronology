@@ -918,5 +918,7 @@ CLINICAL_TYPE_THRESHOLD = 0.70
 def clinical_type_thresholds(labels: dict[str, str], value: float = CLINICAL_TYPE_THRESHOLD) -> dict[str, float]:
     """A lower confidence bar for the types that are read anyway (the page
     type is then only a hint for the page agent). Types that can hold a page
-    back are left out, so they keep the global threshold."""
-    return {t: value for t in labels if t not in SKIPPABLE_TYPES | BILLING_TYPES}
+    back are left out, so they keep the global threshold, and so is "other":
+    a lowered bar there turned billing pages and a deposition into confident
+    "other" hints on the held-out pages."""
+    return {t: value for t in labels if t not in SKIPPABLE_TYPES | BILLING_TYPES | {"other"}}

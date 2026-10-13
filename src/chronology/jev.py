@@ -47,6 +47,40 @@ PAGE_TYPES_V1: dict[str, str] = {
 }
 
 
+# The same 15 labels with sharper wording: what each includes and what it does
+# not, written from the mix-ups seen in testing (discharge instructions read
+# as a handout, a phone note read as "other", a clinical page with a fax
+# header line read as a fax cover, a blank page read as records admin).
+PAGE_TYPES_DETAILED: dict[str, str] = {
+    "ed_note": ("Emergency department record for this patient's visit: triage, ED physician or nurse "
+                "note, or ED discharge instructions naming this visit's diagnosis or prescriptions"),
+    "office_visit": ("Clinic, urgent care, primary care or specialist visit or progress note, including a "
+                     "telephone, portal or nurse-call encounter about this patient's care"),
+    "therapy_note": "Physical, occupational or chiropractic therapy evaluation, daily note, flowsheet or plan of care",
+    "imaging_report": "Radiology or imaging report (X-ray, CT, MRI, ultrasound) with findings or an impression",
+    "procedure_report": ("Operative, injection, nerve block or other procedure report, including the consent "
+                         "or anesthesia record for that procedure"),
+    "medication_record": ("Medication list, prescription, pharmacy printout or medication administration "
+                          "record (MAR)"),
+    "billing": ("Bill, invoice, itemized charges, claim form (CMS-1500, UB-04), explanation of benefits or "
+                "account ledger: charges and codes, no written clinical notes"),
+    "fax_cover": ("Fax cover or transmittal sheet itself: sender, recipient, page count, confidentiality "
+                  "notice. Not a clinical page that only has a fax header line printed across the top"),
+    "records_admin": ("Administrative page about the records themselves: records request, custodian "
+                      "certification or affidavit, HIPAA authorization, release-of-information log, or an "
+                      "index of the records produced"),
+    "lab_result": "Laboratory or pathology result (blood work, urinalysis, cultures, biopsy)",
+    "ems_report": "Ambulance or EMS patient care report",
+    "patient_form": ("Form filled in by or for the patient: intake questionnaire, pain diagram, employer "
+                     "injury report, work-status or disability form"),
+    "legal_correspondence": ("Letter or filing from an attorney, insurer or court (demand letter, subpoena, "
+                             "claim correspondence)"),
+    "education_handout": ("Generic printed patient-education material (about a condition, exercises, home "
+                          "care) that does not mention this patient's visit, diagnosis or prescriptions"),
+    "other": "Fits none of the types above: a blank or separator page, an image placeholder, or unreadable text",
+}
+
+
 def load_api_key(env_file: Path | None = None) -> str:
     """Read TYPESAFE_API_KEY from the environment, falling back to a .env file."""
     key = os.environ.get("TYPESAFE_API_KEY")

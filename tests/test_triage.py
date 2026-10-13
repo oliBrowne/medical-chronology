@@ -190,3 +190,88 @@ def test_boilerplate_does_not_make_pages_duplicates():
 def test_keyword_catches_bare_order_line():
     assert triage.clinical_keyword("Fax cover sheet\nPages: 3\nMRI ordered") == "MRI"
     assert triage.clinical_keyword("Fax cover sheet\nPages: 3\nPlease call to confirm") is None
+
+
+def test_clean_for_jev_drops_stamps_but_keeps_content():
+    text = ("04/02/2024 14:22 FROM 555-0100 TO 555-0199 P.003\nOFFICE VISIT\n"
+            "Neck pain since the collision.\nPage 3 of 12\nEXM0001234")
+    clean = triage.clean_for_jev(text)
+    assert clean == "OFFICE VISIT\nNeck pain since the collision."
+    assert triage.clean_for_jev("Page 1 of 1") == "Page 1 of 1"   # never empties a page
+
+
+def test_three_way_clinical_answer_maps_to_yes_no():
+    resp = {"answers": {"clinical": {"choice": "table",
+                                     "probabilities": {"notes": 0.3, "table": 0.65, "no": 0.05}}}}
+    c, cp, kind, kp = triage._clinical_answer(resp)
+    assert (c, kind) == ("yes", "table") and cp == pytest.approx(0.95) and kp == 0.65
+
+
+def _fixed(page_type, p, clinical="yes", position=None, pos_p=0.99, seen=None):
+    def ask(state, qs):
+        if seen is not None:
+            seen.append(state)
+        page = state.split("[THIS PAGE]\n", 1)[1]
+        t, tp = page_type(page) if callable(page_type) else (page_type, p)
+        out = {"page_type": {"choice": t, "probabilities": {t: tp, "other": 1 - tp}},
+               "clinical": {"choice": clinical, "probabilities": {clinical: 0.99}}}
+        if "position" in qs:
+            pos = position(page) if callable(position) else position
+            out["position"] = {"choice": pos, "probabilities": {pos: pos_p}}
+        return {"answers": out}
+    return ask
+
+
+def test_continuation_borrows_previous_type_only_when_confident():
+    pages = [{"id": "a", "doc": "d", "seq": 1, "text": "PHYSICAL THERAPY DAILY NOTE\ncervical ROM improved"},
+             {"id": "b", "doc": "d", "seq": 2, "text": "tolerated exercises, plan continue 2x weekly"}]
+    page_type = lambda page: ("therapy_note", 0.97) if "THERAPY" in page else ("other", 0.5)
+    position = lambda page: "starts" if "THERAPY" in page else "continues"
+    res = triage.triage_pages(pages, _fixed(page_type, None, position=position), jev.PAGE_TYPES,
+                              use_second_pass=False, ask_position=True)
+    b = next(r for r in res if r.id == "b")
+    assert b.decision.page_type == "therapy_note" and b.decision.type_source == "document"
+    assert b.decision.route == "full"   # a borrowed type is a hint only
+
+
+def test_written_notes_never_go_to_a_table_reader():
+    text = "MEDICATION LIST\nibuprofen 600 mg tid\ncyclobenzaprine 10 mg qhs\ntizanidine 2 mg qhs"
+
+    def ask(state, qs):
+        detailed = "notes" in qs["clinical"]["criteria"]
+        c = "notes" if detailed else "yes"
+        return {"answers": {"page_type": {"choice": "medication_record",
+                                          "probabilities": {"medication_record": 0.99}},
+                            "clinical": {"choice": c, "probabilities": {c: 0.97}}}}
+
+    (plain,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES, use_readers=True)
+    (split,) = triage.triage_pages([{"id": "a", "text": text}], ask, jev.PAGE_TYPES, use_readers=True,
+                                   split_clinical=True)
+    assert plain.decision.route == "reader" and split.decision.route == "full"
+
+
+def test_same_header_reuses_type_with_spot_checks():
+    head = "RIVERSIDE PHYSICAL THERAPY\nDaily Treatment Note"
+    pages = [{"id": f"p{i}", "doc": "d", "seq": i,
+              "text": f"{head}\nVisit {i}: worked on {['lifting', 'posture', 'range', 'gait', 'balance', 'core'][i]} drills"}
+             for i in range(6)]
+    pages += [{"id": f"x{i}", "doc": f"x{i}", "text": f"unrelated page {i}"} for i in range(8)]
+    seen = []
+    res = triage.triage_pages(pages, _fixed("therapy_note", 0.98, seen=seen), jev.PAGE_TYPES,
+                              use_headers=True)
+    reused = [r for r in res if r.decision.type_source == "header"]
+    # p0 asked; p1-p3 reuse its type; p4 is the spot check (asked); p5 reuses
+    assert [r.id for r in reused] == ["p1", "p2", "p3", "p5"]
+    assert len(seen) == len(pages) - 4
+    assert all(r.decision.page_type == "therapy_note" and r.decision.route == "full" for r in reused)
+
+
+def test_same_header_never_reuses_a_skippable_type():
+    head = "RECORDS DEPARTMENT\nRequest for records"
+    pages = [{"id": f"p{i}", "doc": "d", "seq": i, "text": f"{head}\nRequest number {i} item {'abcdef'[i]}"}
+             for i in range(4)]
+    pages += [{"id": f"x{i}", "doc": f"x{i}", "text": f"unrelated page {i}"} for i in range(8)]
+    seen = []
+    triage.triage_pages(pages, _fixed("records_admin", 0.98, clinical="no", seen=seen), jev.PAGE_TYPES,
+                        use_headers=True)
+    assert len(seen) == len(pages)

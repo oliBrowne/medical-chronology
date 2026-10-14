@@ -204,6 +204,7 @@ and firms are "Example ...".
 | efficiency | `efficiency_pages.json` | 20 | long bills, MARs, copied-forward notes, repeated forms |
 | held-out 1 | `heldout_pages.json` | 32 | single pages not used to tune anything (but seen when choosing the five extra labels) |
 | held-out 2 | `heldout2_pages.json` | 28 in 15 files | written before any test ran on it; multi-page ED, inpatient, PT, billing, records and imaging files |
+| written | `written_pages.json` | 278 in 113 files | test only, never tune on it: hand-written-style pages in four themes (acute and hospital care, outpatient, admin and billing, messy scans with OCR damage, Spanish, merged files and injected instructions). `label` uses the 15 labels plus "other"; `label_fine` has the 20-label type |
 
 Stress conditions applied to the pages by the test script: `long` (production
 notices mixed into every page), `injected` ("ignore previous instructions,

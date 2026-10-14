@@ -287,7 +287,7 @@ def test_jev_cleaning_keeps_a_documents_own_letterhead():
     assert triage.norm_line(head) not in bp and "production notice" in bp
 
 
-@pytest.mark.parametrize("name", ["heldout_pages.json", "heldout2_pages.json"])
+@pytest.mark.parametrize("name", ["heldout_pages.json", "heldout2_pages.json", "written_pages.json"])
 def test_heldout_pages_are_well_formed(name):
     pages = json.loads((Path(__file__).parents[1] / "scripts/jev" / name).read_text())
     assert len({p["id"] for p in pages}) == len(pages)

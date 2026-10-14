@@ -523,7 +523,7 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                  clean_input: bool = True, ask_position: bool = True,
                  split_clinical: bool = True, use_headers: bool = True,
                  type_thresholds: dict[str, float] | None = None,
-                 tell_position: bool = True, double_check: bool = False,
+                 tell_position: bool = True, double_check: bool = False, use_segments: bool = True,
                  pool_map=map) -> list[PageResult]:
     """Triage a production. ``pages`` are dicts with id, text and optionally
     doc and seq; ``ask(state, questions)`` returns a Jev response. The
@@ -573,13 +573,17 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                         use ``type_threshold`` for every type.
     ``tell_position``   Jev is told "page 3 of 5 in its file; page 1 begins
                         ..." as context.
+    ``use_segments``    find the documents inside each file in code
+                        (``chronology.segment``): reuse (runs, headers) and
+                        borrowing stop at a document start, and the position
+                        clue counts pages of the document.
     Measured and not used (off by default):
     ``double_check``    the page-type question is asked a second time with the
                         labels in reverse order; if the answers differ the
                         page is unsure. Doubled first-pass calls and changed
                         nothing on the held-out pages.
     """
-    from chronology import jev, readers  # local import: readers imports this module
+    from chronology import jev, readers, segment  # local import: readers imports this module
 
     if labels is None:
         labels = jev.PAGE_TYPES_EXTENDED
@@ -593,6 +597,18 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         by_doc.setdefault(r.doc, []).append(r)
 
     position = {id(r): i for doc in by_doc.values() for i, r in enumerate(doc)}
+    # documents inside each file, found by code: reuse and borrowing stop at a
+    # document start, and the position clue counts pages of the document
+    seg_start: dict[int, bool] = {}
+    seg_of: dict[int, tuple[int, int, int]] = {}   # id -> (page in document, pages in document, first page index)
+    for doc in by_doc.values():
+        bounds = segment.code_boundaries([r.text for r in doc]) if use_segments else \
+            [segment.Boundary(i == 0, "file", True) for i in range(len(doc))]
+        starts = [i for i, b in enumerate(bounds) if b.starts] + [len(doc)]
+        for a, b in zip(starts, starts[1:]):
+            for i in range(a, b):
+                seg_start[id(doc[i])] = i == a
+                seg_of[id(doc[i])] = (i - a + 1, b - a, a)
 
     def neighbor(r: PageResult, step: int) -> PageResult | None:
         doc = by_doc[r.doc]
@@ -631,12 +647,13 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         if not tell_position:
             return None
         doc = by_doc[r.doc]
-        i = position[id(r)]
-        note = f"Page {i + 1} of {len(doc)} in its file."
-        if i > 0:
-            first = next((x.strip() for x in jev_text(doc[0]).split("\n") if x.strip()), "")[:80]
+        k, n, first_i = seg_of[id(r)]
+        note = f"Page {k} of {n} in its document"
+        note += f" (page {position[id(r)] + 1} of {len(doc)} in its file)." if len(doc) > n else "."
+        if k > 1:
+            first = next((x.strip() for x in jev_text(doc[first_i]).split("\n") if x.strip()), "")[:80]
             if first:
-                note += f' Page 1 of the file begins: "{first}"'
+                note += f' Page 1 of the document begins: "{first}"'
         return note
 
     def clinical_q() -> dict:
@@ -755,6 +772,14 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
         """Pages of one document in order, so each can reuse earlier decisions."""
         for r in doc_pages:
             core = cores[r.id]
+            if seg_start[id(r)] and position[id(r)] > 0:
+                # a new document inside the file: nothing carries over from the last one
+                run_len[r.doc] = 0
+                run_off.discard(r.doc)
+                inherited[r.doc] = 0
+                headers[r.doc] = (None, None)
+                header_count[r.doc] = 0
+                header_off.discard(r.doc)
             h = page_header(clean_for_jev(r.text, jev_boilerplate)) if use_headers else None
             last_h, src = headers.get(r.doc, (None, None))
             headers[r.doc] = (h, None)   # a page becomes a header source only if Jev typed it confidently
@@ -836,8 +861,15 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
             if not unsure(r) or not r.type_probs:
                 continue
             steps = (-1, 1)
+            nxt = neighbor(r, 1)
+            if seg_start[id(r)]:
+                steps = (1,)          # code says it starts a document: nothing from the page before
+            if nxt is not None and seg_start[id(nxt)]:
+                steps = tuple(x for x in steps if x != 1)   # the next page starts another document
+            if not steps:
+                continue
             if ask_position and r.position_prob is not None and r.position_prob >= type_threshold:
-                if r.position == "continues":
+                if r.position == "continues" and -1 in steps:
                     # it says it continues the previous page: take that page's type
                     n = neighbor(r, -1)
                     if n and n.decision and n.decision.type_source == "direct" and confident(n.decision):

@@ -426,8 +426,8 @@ def test_tell_position_puts_page_number_and_first_line_in_the_state():
     triage.triage_pages(pages, ask, jev.PAGE_TYPES, tell_position=True, use_headers=False,
                         use_templates=False, use_runs=False)
     joined = "\n".join(states)
-    assert "Page 1 of 2 in its file." in joined
-    assert 'Page 2 of 2 in its file. Page 1 of the file begins: "OFFICE VISIT NOTE"' in joined
+    assert "Page 1 of 2 in its document." in joined
+    assert 'Page 2 of 2 in its document. Page 1 of the document begins: "OFFICE VISIT NOTE"' in joined
 
 
 def test_double_check_marks_order_sensitive_answers_unsure():

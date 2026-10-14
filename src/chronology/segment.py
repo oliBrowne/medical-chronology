@@ -12,9 +12,12 @@ Two sources, combined:
   previous page's. A page whose counter says "Page 2 of 3", or whose first
   line reads like running text, continues the document before it.
 - Jev's answer to the starts / continues question, asked during triage at no
-  extra cost (``refine_with_jev``). A confident answer settles the pages code
-  could not: a title-less first page, or a new title on a page that is
-  really a continuation.
+  extra cost (``refine_with_jev``). It can only add a start where code found
+  none (a title-less first page). It never removes one: on the synthetic case
+  Jev answered a confident "continues" for new documents such as a phone note,
+  a legal letter or discharge instructions (it sees only the glance, not the
+  previous page), which cut recall from 0.94 to 0.86 when it could overrule
+  code.
 
 A page counter, when present, beats everything else.
 """
@@ -111,7 +114,9 @@ def code_boundaries(texts: list[str]) -> list[Boundary]:
             elif prev_n == n and prev.counter[0] == k - 1:
                 out.append(Boundary(False, "counter", True))
             else:   # a counter that does not follow on: decide from the title
-                out.append(Boundary(bool(sig.title) and not sig.runs_on, "title", False))
+                new_title = bool(sig.title) and not sig.runs_on and not sig.continued and (
+                    prev is None or _norm(sig.title) != _norm(prev.title or prev.first_line))
+                out.append(Boundary(new_title, "title", False))
         elif sig.runs_on or sig.continued or _SECTION.match(sig.first_line):
             out.append(Boundary(False, "runs on", False))
         elif sig.title and (prev is None or _norm(sig.title) != _norm(prev.title or prev.first_line)):
@@ -125,15 +130,16 @@ def code_boundaries(texts: list[str]) -> list[Boundary]:
 
 
 def refine_with_jev(bounds: list[Boundary], answers: list[tuple[str | None, float | None]]) -> list[Boundary]:
-    """Let a confident starts / continues answer from Jev settle each page
-    that code could not be sure of. ``answers`` is (position, probability)
-    per page, None where Jev was not asked (reused or duplicate pages)."""
+    """Add a document start where code found none and Jev confidently says
+    the page starts one. ``answers`` is (position, probability) per page,
+    None where Jev was not asked (reused or duplicate pages). Code's starts,
+    and anything a page counter decided, are kept as they are."""
     out = []
     for b, (pos, p) in zip(bounds, answers):
-        if b.sure or pos is None or p is None or p < CONFIDENT:
-            out.append(b)
+        if not b.starts and not b.sure and pos == "starts" and p is not None and p >= CONFIDENT:
+            out.append(Boundary(True, "jev", False))
         else:
-            out.append(Boundary(pos == "starts", "jev", False))
+            out.append(b)
     return out
 
 

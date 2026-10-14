@@ -35,11 +35,12 @@ def test_new_title_starts_and_running_text_continues():
 
 def test_jev_settles_only_what_code_was_unsure_of():
     bounds = [segment.Boundary(True, "first page", True), segment.Boundary(False, "no title", False),
-              segment.Boundary(False, "counter", True)]
-    answers = [(None, None), ("starts", 0.97), ("starts", 0.99)]
+              segment.Boundary(False, "counter", True), segment.Boundary(True, "title", False)]
+    answers = [(None, None), ("starts", 0.97), ("starts", 0.99), ("continues", 0.99)]
     refined = segment.refine_with_jev(bounds, answers)
-    assert [b.starts for b in refined] == [True, True, False]   # the counter wins
-    assert segment.segment_ids(refined) == [0, 1, 1]
+    # Jev adds a start code missed; a counter wins; Jev never removes a code start
+    assert [b.starts for b in refined] == [True, True, False, True]
+    assert segment.segment_ids(refined) == [0, 1, 1, 2]
     # an unsure answer changes nothing
     assert segment.refine_with_jev(bounds, [(None, None), ("starts", 0.6), (None, None)])[1].starts is False
 

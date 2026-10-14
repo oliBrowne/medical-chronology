@@ -32,6 +32,10 @@ class Page(BaseModel):
     text_source: Literal["native", "ocr"]
     ocr_confidence: float | None = None
     page_type: str | None = None  # set by triage, e.g. "consult note", "billing"
+    # set by triage: "skip" | "reader" | "full" | "full_new" | "duplicate" | "billing"
+    triage_route: str | None = None
+    duplicate_of: str | None = None  # page id of the first copy
+    segment: int = 0  # which document inside the PDF (merged productions hold many)
 
 
 class EvidenceSpan(BaseModel):

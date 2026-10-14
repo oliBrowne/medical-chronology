@@ -394,9 +394,9 @@ def test_parallel_documents_match_serial_order():
         assert summary(parallel_docs=False) == summary(parallel_docs=True, pool_map=pool.map)
 
 
-def test_extended_labels_add_only_types_that_cannot_hold_a_page_back():
+def test_extended_labels_add_only_blank_pages_as_a_type_that_can_hold_a_page_back():
     assert set(jev.PAGE_TYPES_DETAILED) < set(jev.PAGE_TYPES_EXTENDED)
-    assert not set(jev.EXTRA_PAGE_TYPES) & (triage.SKIPPABLE_TYPES | triage.BILLING_TYPES)
+    assert set(jev.EXTRA_PAGE_TYPES) & (triage.SKIPPABLE_TYPES | triage.BILLING_TYPES) == {"blank_or_separator"}
     assert list(jev.PAGE_TYPES_EXTENDED)[-1] == "other"
 
 
@@ -458,3 +458,14 @@ def test_defaults_are_v7():
     assert "[WHERE THIS PAGE SITS" in state
     assert res["a"].decision.type_source == "direct"   # 0.75 clears the clinical-type bar
     assert all(len(q["page_type"]["criteria"]) for _, q in seen)
+
+
+def test_blank_and_separator_pages_are_skipped_only_when_nearly_empty():
+    blank = "THIS PAGE INTENTIONALLY LEFT BLANK\nEXM0001234"
+    assert triage.route("blank_or_separator", 0.99, "no", 0.99, text=blank).route == "skip"
+    sep = "*** DOCUMENTS FOLLOW ***\nSECTION 3\nproduced in response to subpoena"
+    assert triage.route("blank_or_separator", 0.99, "no", 0.99, text=sep).route == "skip"
+    wordy = "SECTION 3\n" + " ".join(["records produced by the custodian on request"] * 6)
+    assert triage.route("blank_or_separator", 0.99, "no", 0.99, text=wordy).route == "full"
+    assert triage.route("blank_or_separator", 0.99, "no", 0.99, text="Continued\nPt reports pain").route == "full"
+    assert triage.route("blank_or_separator", 0.80, "no", 0.99, text=blank).route == "full"

@@ -38,7 +38,11 @@ from dataclasses import dataclass, field
 
 # Types a table reader in code can take instead of the page agent (readers.TABLE_KINDS).
 READER_TYPES = frozenset({"billing", "medication_record", "lab_result"})
-SKIPPABLE_TYPES = frozenset({"fax_cover", "records_admin", "legal_correspondence", "education_handout"})
+SKIPPABLE_TYPES = frozenset({"fax_cover", "records_admin", "legal_correspondence", "education_handout",
+                             "blank_or_separator"})
+# A page Jev calls blank or a separator is only held back if it really is
+# nearly empty once stamps are removed; anything longer is read.
+BLANK_MAX_WORDS = 30
 BILLING_TYPES = frozenset({"billing"})
 
 CLINICAL_CONTENT: dict[str, str] = {
@@ -148,6 +152,10 @@ def route(page_type: str | None, type_prob: float | None,
         decision.reason = "clinical page type"
     if decision.route != "full" and text is not None:
         hit = clinical_keyword(text)
+        words = len(clean_for_jev(text).split())
+        if page_type == "blank_or_separator" and words > BLANK_MAX_WORDS:
+            decision.route, decision.reason = "full", f"{words} words is too much for a blank page"
+            return decision
         if hit:
             decision.route, decision.reason = "full", f"keyword backstop: {hit!r}"
         elif text_quality(text) < min_quality:

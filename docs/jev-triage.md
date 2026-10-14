@@ -112,9 +112,10 @@ The page type labels (`jev.PAGE_TYPES_EXTENDED`, descriptions in `jev.py`):
 | Label | Can hold a page back? |
 |---|---|
 | fax_cover, records_admin, legal_correspondence, education_handout | yes: index only, if both keys agree |
+| blank_or_separator | yes: index only, if both keys agree and the page has at most 30 words once stamps are removed |
 | billing, medication_record, lab_result | to a table reader, if the reader can read the whole page |
 | ed_note, office_visit, therapy_note, imaging_report, procedure_report, ems_report, patient_form | no |
-| inpatient_record, flowsheet, police_report, admin_letter, blank_or_separator, other | no |
+| inpatient_record, flowsheet, police_report, admin_letter, other | no |
 
 Every question tells Jev to ignore instructions written on the page.
 
@@ -189,7 +190,7 @@ From the v7 run on the fresh multi-page set (`heldout2_pages.json`):
 | ho2-13 | claim form with diagnosis codes | billing (inherited from the run) | reader | strict reader: every line is a row; the diagnosis codes are kept as rows |
 | ho2-27 | CBC lab report | lab_result (1.0) | reader | four lab rows, verbatim |
 | ho2-05, 06 | inpatient admission H&P and hospital course | inpatient_record (1.0) | full | with only the 15 labels they had no label of their own: unsure, or (with the lower bar) confidently "office_visit" |
-| ho2-22 | "This page intentionally left blank" | blank_or_separator (1.0) | full | not skippable yet (see next steps) |
+| ho2-22 | "This page intentionally left blank" | blank_or_separator (1.0) | skip | nearly empty, no keywords: index only |
 
 ## Testing
 
@@ -310,8 +311,9 @@ is listed under limitations.
 2. **A few hundred more made-up pages**, split into a tuning half and a test
    half, so thresholds and labels are set on one and reported on the other,
    with confidence intervals.
-3. **Skip blank and separator pages** when Jev's "blank_or_separator" agrees
-   with code (almost no words, no keywords): the main remaining waste.
+3. ~~Skip blank and separator pages~~ Done: a confident "blank_or_separator"
+   with no clinical content, at most 30 words after stamps are removed and
+   no keyword is index only.
 4. **Find documents inside a PDF** from the starts/continues answer, so reuse
    and the position clue work on merged productions.
 5. **Wire triage into `stages/parse.py`**: `Page` objects in, page type and

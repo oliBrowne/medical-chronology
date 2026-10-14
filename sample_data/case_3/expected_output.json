@@ -1,0 +1,101 @@
+{
+  "_note": "Answer key for case_3, a deliberately messy copy of case_2 (fictional). Clinical content is the same as case_2; only the dates and one page break were changed. Findings are scored against sample_data/case_2/expected_output.json (case_3 has one extra page, BELL 000104, the continuation of the 06/20 visit). This file lists what the pipeline should do with each corrupted date.",
+  "true_encounters": [
+    {"date": "2023-02-11", "bates": "BELL 000105"},
+    {"date": "2024-05-09", "bates": "BELL 000101"},
+    {"date": "2024-05-16", "bates": "BELL 000102"},
+    {"date": "2024-06-20", "bates": ["BELL 000103", "BELL 000104"]}
+  ],
+
+  "date_cases": [
+    {
+      "id": "ocr_letters_in_service_date",
+      "bates": "BELL 000101",
+      "printed": "O5/O9/2O24",
+      "role": "service_date",
+      "expect": {"iso": "2024-05-09", "flag": "ocr_corrected"},
+      "note": "Letter O for zero. Correct it in code, record that it was corrected."
+    },
+    {
+      "id": "ocr_letter_in_dob",
+      "bates": "BELL 000101",
+      "printed": "04/17/l985",
+      "role": "dob",
+      "expect": {"iso": "1985-04-17", "flag": "ocr_corrected"},
+      "note": "Lowercase L for one."
+    },
+    {
+      "id": "space_before_separator",
+      "bates": "BELL 000101",
+      "printed": "05/10 /2024 08:05",
+      "role": "signature",
+      "expect": {"iso": "2024-05-10", "time": "08:05"}
+    },
+    {
+      "id": "two_digit_year",
+      "bates": "BELL 000101",
+      "printed": "07/02/24 11:30",
+      "role": "print",
+      "expect": {"iso": "2024-07-02", "time": "11:30"}
+    },
+    {
+      "id": "blank_service_date",
+      "bates": "BELL 000102",
+      "printed": "________",
+      "role": "service_date",
+      "expect": {"iso": null, "flag": "needs_review", "candidate": "2024-05-16", "candidate_source": "signature date"},
+      "note": "Header date is blank. The signature date is a candidate only: show it, flag it, do not silently use it as the visit date."
+    },
+    {
+      "id": "hyphen_date_no_padding",
+      "bates": "BELL 000102",
+      "printed": "5-16-2024",
+      "role": "signature",
+      "expect": {"iso": "2024-05-16"}
+    },
+    {
+      "id": "long_form_service_date",
+      "bates": "BELL 000103",
+      "printed": "June 20, 2024",
+      "role": "service_date",
+      "expect": {"iso": "2024-06-20"}
+    },
+    {
+      "id": "unlabeled_fax_stamp",
+      "bates": "BELL 000103",
+      "printed": "07/09/2024 14:52",
+      "role": "other",
+      "expect": {"event_date_must_not_be": "2024-07-09"},
+      "note": "Machine fax stamp. Must never become an event date."
+    },
+    {
+      "id": "undated_continuation_page",
+      "bates": "BELL 000104",
+      "printed": null,
+      "role": "service_date",
+      "expect": {"iso": null, "flag": "inferred", "candidate": "2024-06-20", "candidate_source": "previous page of the same visit (BELL 000103)"},
+      "note": "Page has no date at all. Findings stay in the chronology as undated or as inferred from the previous page, and are flagged."
+    },
+    {
+      "id": "form_revision_date",
+      "bates": "BELL 000104",
+      "printed": "03/04/24",
+      "role": "other",
+      "expect": {"event_date_must_not_be": ["2024-03-04", "2024-04-03"]},
+      "note": "Form revision stamp. Ambiguous month/day order and irrelevant. Must not become an event date."
+    },
+    {
+      "id": "service_date_missing_year",
+      "bates": "BELL 000105",
+      "printed": "02/11",
+      "role": "service_date",
+      "expect": {"iso": "2023-02-11", "flag": "year_inferred", "year_source": "signature date 02/11/2023 on the same page"}
+    }
+  ],
+
+  "must_not_happen": [
+    "Any finding dated to a fax, print, certification, or form-revision date.",
+    "A date guessed silently: every inferred or corrected date carries a flag.",
+    "A finding disappearing because its page has no usable date."
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "_note": "Answer key for the fictional Reyes sample. Every excerpt is a verbatim substring of its source file.",
+  "case": {
+    "patient": "Dana M. Reyes",
+    "dob": "1990-08-02",
+    "date_of_incident": "2024-03-14",
+    "mechanism": "Rear-end MVC, restrained driver, stopped vehicle struck by box truck at ~20-25 mph, no airbag deployment",
+    "claimed_injuries": ["cervical", "lumbar", "right_shoulder"]
+  },
+
+  "encounters": [
+    {"date": "2022-06-07", "type": "chiropractic", "facility": "Cedar Ridge Chiropractic", "bates": "REY 000109", "note": "Pre-incident. Out of chronological order in the production."},
+    {"date": "2024-03-14", "type": "ems", "facility": "Fairview Fire Rescue", "source": "incident_report.md", "note": "Treat-no-transport"},
+    {"date": "2024-03-14", "type": "emergency", "facility": "Front Range Regional Medical Center", "bates": "REY 000101", "date_traps": ["03/15/2024 01:12 (e-sign)", "05/20/2024 09:14 (print)"]},
+    {"date": "2024-03-28", "type": "primary_care", "facility": "Mesa Family Medicine", "bates": "REY 000102"},
+    {"date": "2024-04-03", "type": "physical_therapy", "facility": "Peak Physical Therapy", "bates": "REY 000103"},
+    {"date": "2024-04-17", "type": "physical_therapy", "facility": "Peak Physical Therapy", "bates": "REY 000104"},
+    {"date": "2024-05-02", "type": "imaging", "facility": "Summit Imaging", "bates": "REY 000105"},
+    {"date": "2024-06-11", "type": "orthopedics", "facility": "Foothills Orthopedics", "bates": "REY 000106"},
+    {"date": "2024-09-10", "type": "imaging", "facility": "Summit Imaging", "bates": "REY 000107"},
+    {"date": "2024-09-23", "type": "orthopedics", "facility": "Foothills Orthopedics", "bates": "REY 000108", "date_traps": ["08/30/2024 (records certified, on REY 000109 not this page)"]}
+  ],
+
+  "example_findings": [
+    {
+      "date": "2024-03-14", "bates": "REY 000101", "region": "cervical", "laterality": "bilateral",
+      "type": "exam", "negated": false,
+      "excerpt": "TTP bilat cervical paraspinals, no midline TTP, ROM limited by pain in rotation",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-03-14", "bates": "REY 000101", "region": "lumbar", "laterality": null,
+      "type": "complaint", "negated": true,
+      "excerpt": "denies back pain",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-03-14", "bates": "REY 000101", "region": "shoulder", "laterality": "right",
+      "type": "complaint", "negated": false,
+      "excerpt": "Also reports right shoulder soreness, \"feels tight.\"",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-03-28", "bates": "REY 000102", "region": "lumbar", "laterality": null,
+      "type": "complaint", "negated": false,
+      "excerpt": "Pt now c/o low back pain x ~1 wk, gradual onset, 5/10, achy, no radiation.",
+      "icd10": "M54.50", "snomed": null
+    },
+    {
+      "date": "2024-05-02", "bates": "REY 000105", "region": "cervical", "laterality": "bilateral",
+      "type": "imaging", "negated": false, "degenerative": true,
+      "excerpt": "Findings of disc desiccation and osteophyte formation are chronic and degenerative in nature.",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-09-10", "bates": "REY 000107", "region": "shoulder", "laterality": "right",
+      "type": "imaging", "negated": false,
+      "excerpt": "Partial-thickness articular-surface tear of the supraspinatus, approx 30% thickness, with tendinosis.",
+      "icd10": null, "snomed": null
+    }
+  ],
+
+  "planted_signals": [
+    {
+      "id": "preexisting_neck_back",
+      "type": "pre_existing",
+      "regions": ["cervical", "lumbar"],
+      "evidence": [{"bates": "REY 000109", "date": "2022-06-07", "excerpt": "Neck stiffness and low back pain x 3 wks"}]
+    },
+    {
+      "id": "history_denial_contradiction",
+      "type": "history_contradiction",
+      "claims": [
+        {"source": "case_summary.md", "excerpt": "Client denies any prior neck or back problems."},
+        {"bates": "REY 000103", "excerpt": "Pt reports no prior history of neck or back pain."}
+      ],
+      "contradicted_by": [{"bates": "REY 000109", "date": "2022-06-07"}],
+      "nuance": "ED note says 'Denies prior neck injury.' The 2022 visit was non-traumatic, so that statement is arguably true. Should be flagged for review, not as a contradiction."
+    },
+    {
+      "id": "lumbar_latency",
+      "type": "latency",
+      "region": "lumbar",
+      "days": 14,
+      "evidence": [
+        {"bates": "REY 000101", "date": "2024-03-14", "excerpt": "denies back pain"},
+        {"source": "incident_report.md", "date": "2024-03-14", "excerpt": "denies back pain"},
+        {"bates": "REY 000102", "date": "2024-03-28", "excerpt": "Pt now c/o low back pain x ~1 wk"}
+      ]
+    },
+    {
+      "id": "lumbar_intervening_event",
+      "type": "intervening_event",
+      "region": "lumbar",
+      "date": "2024-03-20",
+      "evidence": [{"bates": "REY 000102", "excerpt": "Pt notes she helped a friend move apartments on 3/20 and \"it got worse after that.\""}]
+    },
+    {
+      "id": "shoulder_laterality_scene_vs_ed",
+      "type": "laterality_conflict",
+      "region": "shoulder",
+      "evidence": [
+        {"source": "incident_report.md", "excerpt": "pain to her left shoulder"},
+        {"source": "incident_report.md", "excerpt": "Pt c/o L shoulder \"soreness.\""},
+        {"bates": "REY 000101", "excerpt": "Also reports right shoulder soreness"}
+      ]
+    },
+    {
+      "id": "shoulder_laterality_ortho_internal",
+      "type": "laterality_conflict",
+      "region": "shoulder",
+      "note": "Same note: HPI, exam, and injection are right; assessment says left.",
+      "evidence": [{"bates": "REY 000106", "excerpt": "Left shoulder impingement syndrome — M75.42"}]
+    },
+    {
+      "id": "shoulder_degenerative",
+      "type": "degenerative_finding",
+      "region": "shoulder",
+      "evidence": [
+        {"bates": "REY 000106", "excerpt": "Type II acromion. Mild AC joint degenerative changes."},
+        {"bates": "REY 000107", "excerpt": "Moderate AC joint arthropathy with inferior osteophyte, which may predispose to impingement."}
+      ]
+    },
+    {
+      "id": "cervical_degenerative",
+      "type": "degenerative_finding",
+      "region": "cervical",
+      "evidence": [
+        {"bates": "REY 000101", "excerpt": "Mild degenerative disc disease at C5-C6 with small posterior osteophyte."},
+        {"bates": "REY 000105", "excerpt": "No acute osseous or ligamentous injury."}
+      ]
+    },
+    {
+      "id": "treatment_gap",
+      "type": "treatment_gap",
+      "from": "2024-06-11",
+      "to": "2024-09-10",
+      "days": 91,
+      "evidence": [{"bates": "REY 000108", "excerpt": "Pt states she has had \"no treatment for anything since June\" due to cost."}]
+    },
+    {
+      "id": "transport_contradiction",
+      "type": "case_summary_contradiction",
+      "claim": {"source": "case_summary.md", "excerpt": "Client was taken by ambulance to Front Range Regional Medical Center that evening."},
+      "contradicted_by": [
+        {"source": "incident_report.md", "excerpt": "Refused EMS transport"},
+        {"bates": "REY 000101", "excerpt": "presents by private vehicle"}
+      ]
+    },
+    {
+      "id": "ed_back_pain_contradiction",
+      "type": "case_summary_contradiction",
+      "claim": {"source": "case_summary.md", "excerpt": "Neck and back pain, CT C-spine, discharged with meds"},
+      "contradicted_by": [{"bates": "REY 000101", "excerpt": "denies back pain"}]
+    },
+    {
+      "id": "pt_copy_forward",
+      "type": "copy_forward",
+      "evidence": [{"bates": "REY 000103"}, {"bates": "REY 000104"}],
+      "excerpt": "Pt presents with signs and symptoms consistent with cervical and lumbar strain following MVC."
+    }
+  ]
+}

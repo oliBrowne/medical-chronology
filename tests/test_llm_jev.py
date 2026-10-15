@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from chronology import jev
+from chronology.llm import jev
 
 
 def test_page_type_question_is_a_choice_with_every_label():

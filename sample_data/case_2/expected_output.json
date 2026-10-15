@@ -1,0 +1,116 @@
+{
+  "_note": "Answer key for the fictional Bell sample. Every excerpt is a verbatim substring of its source file.",
+  "case": {
+    "patient": "Marcus T. Bell",
+    "dob": "1985-04-17",
+    "date_of_incident": "2024-05-09",
+    "mechanism": "Slip and fall on wet floor near a store misting display, no wet-floor sign, fell onto outstretched hand",
+    "claimed_injuries": ["left_wrist", "lumbar"]
+  },
+
+  "encounters": [
+    {"date": "2023-02-11", "type": "primary_care", "facility": "Lakeview Family Practice", "bates": "BELL 000104", "note": "Pre-incident. Out of chronological order in the production.", "date_traps": ["07/08/2024 (records certified)"]},
+    {"date": "2024-05-09", "type": "incident_report", "facility": "Harbor Fresh Market", "source": "incident_report.md", "date_traps": ["06/03/2024 09:40 (print)"]},
+    {"date": "2024-05-09", "type": "urgent_care", "facility": "Fairview Urgent Care", "bates": "BELL 000101", "date_traps": ["05/10/2024 08:05 (e-sign)", "07/02/2024 11:30 (print)"]},
+    {"date": "2024-05-16", "type": "orthopedics", "facility": "Summit Orthopedics", "bates": "BELL 000102"},
+    {"date": "2024-06-20", "type": "orthopedics", "facility": "Summit Orthopedics", "bates": "BELL 000103"}
+  ],
+
+  "example_findings": [
+    {
+      "date": "2024-05-09", "bates": "BELL 000101", "region": "wrist", "laterality": "left",
+      "type": "imaging", "negated": false,
+      "excerpt": "Transverse fracture of the distal radius, minimally displaced.",
+      "icd10": "S52.502A", "snomed": null
+    },
+    {
+      "date": "2024-05-09", "bates": "BELL 000101", "region": "lumbar", "laterality": null,
+      "type": "complaint", "negated": true,
+      "excerpt": "denies back pain",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-05-16", "bates": "BELL 000102", "region": "lumbar", "laterality": null,
+      "type": "complaint", "negated": false,
+      "excerpt": "Pt now c/o low back pain x ~5 days, achy, 4/10, no radiation.",
+      "icd10": "M54.50", "snomed": null
+    },
+    {
+      "date": "2024-05-16", "bates": "BELL 000102", "region": "wrist", "laterality": "left",
+      "type": "procedure", "negated": false,
+      "excerpt": "Short-arm cast applied today",
+      "icd10": null, "snomed": null
+    },
+    {
+      "date": "2024-06-20", "bates": "BELL 000103", "region": "wrist", "laterality": "left",
+      "type": "imaging", "negated": false,
+      "excerpt": "healing distal radius fracture with callus formation, alignment maintained.",
+      "icd10": "S52.502D", "snomed": null
+    }
+  ],
+
+  "planted_signals": [
+    {
+      "id": "preexisting_low_back",
+      "type": "pre_existing",
+      "regions": ["lumbar"],
+      "evidence": [{"bates": "BELL 000104", "date": "2023-02-11", "excerpt": "Pt reports achy low back pain for approx 2 wks after lifting furniture."}]
+    },
+    {
+      "id": "history_denial_contradiction",
+      "type": "history_contradiction",
+      "claims": [
+        {"source": "case_summary.md", "excerpt": "Client denies any prior back problems."}
+      ],
+      "contradicted_by": [{"bates": "BELL 000104", "date": "2023-02-11"}]
+    },
+    {
+      "id": "lumbar_latency",
+      "type": "latency",
+      "region": "lumbar",
+      "days": 7,
+      "note": "First recorded complaint 2024-05-16; onset stated as ~5 days earlier (about 05/11).",
+      "evidence": [
+        {"bates": "BELL 000101", "date": "2024-05-09", "excerpt": "denies back pain"},
+        {"source": "incident_report.md", "date": "2024-05-09", "excerpt": "denied back pain at that time"},
+        {"bates": "BELL 000102", "date": "2024-05-16", "excerpt": "Pt now c/o low back pain x ~5 days"}
+      ]
+    },
+    {
+      "id": "lumbar_intervening_event",
+      "type": "intervening_event",
+      "region": "lumbar",
+      "date": "2024-05-13",
+      "evidence": [{"bates": "BELL 000102", "excerpt": "Pt states he was moving boxes at work on 5/13 and back \"got worse after that.\""}]
+    },
+    {
+      "id": "wrist_laterality_scene_vs_clinic",
+      "type": "laterality_conflict",
+      "region": "wrist",
+      "evidence": [
+        {"source": "incident_report.md", "excerpt": "Customer complained of right wrist pain."},
+        {"bates": "BELL 000101", "excerpt": "falling onto his outstretched left hand"}
+      ]
+    },
+    {
+      "id": "summary_vs_records_transport",
+      "type": "summary_contradiction",
+      "claims": [{"source": "case_summary.md", "excerpt": "Client was taken by ambulance to Fairview Urgent Care that afternoon."}],
+      "contradicted_by": [
+        {"source": "incident_report.md", "excerpt": "Customer declined and stated his wife would drive him to Fairview Urgent Care."},
+        {"bates": "BELL 000101", "excerpt": "presents by private vehicle"}
+      ]
+    },
+    {
+      "id": "date_traps",
+      "type": "wrong_dates_on_page",
+      "note": "Event date must come from the labeled visit/service date, never the e-sign, print, or certification date.",
+      "evidence": [
+        {"bates": "BELL 000101", "excerpt": "Electronically signed: A. Mehta, MD 05/10/2024 08:05"},
+        {"bates": "BELL 000101", "excerpt": "Printed: 07/02/2024 11:30"},
+        {"bates": "BELL 000104", "excerpt": "Records certified: 07/08/2024"},
+        {"source": "incident_report.md", "excerpt": "Printed: 06/03/2024 09:40"}
+      ]
+    }
+  ]
+}

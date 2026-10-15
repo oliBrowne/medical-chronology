@@ -17,6 +17,14 @@ jobs:
             echo "$bad"
             exit 1
           fi
+      - name: Fail if knowledge/ holds anything but JSON or Markdown
+        run: |
+          bad=$(git ls-files knowledge | grep -vE '\.(json|md)$' || true)
+          if [ -n "$bad" ]; then
+            echo "knowledge/ is committed reference data; only .json and .md belong there:"
+            echo "$bad"
+            exit 1
+          fi
 
   test:
     runs-on: ubuntu-latest

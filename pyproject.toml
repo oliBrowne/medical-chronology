@@ -7,7 +7,10 @@ name = "chronology"
 version = "0.0.1"
 description = "Agentic chronology construction from unstructured medical-legal records"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2"]
+dependencies = ["pydantic>=2", "dateparser>=1.2"]
+
+[project.scripts]
+chronology = "chronology.pipeline:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

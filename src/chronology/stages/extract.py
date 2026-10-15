@@ -1,4 +1,4 @@
-"""Step 2: pages -> ``EvidenceSpan`` + ``Finding`` records.
+"""Step 2: pages -> ``EvidenceSpan`` + ``Finding`` records, one PageAgent per page.
 
 The model may only *point at* text (character offsets on a page); the quote is
 then copied from the page by code, so it is verbatim by construction. Each

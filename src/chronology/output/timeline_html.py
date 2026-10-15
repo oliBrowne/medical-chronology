@@ -1,21 +1,27 @@
 """Render a chronology bundle as ``timeline.html``.
 
 One self-contained file: no external scripts, fonts or styles, so it opens
-offline and prints cleanly (filters are hidden in print). Every quote is shown
+offline and prints cleanly (filters are hidden in print). It is always light,
+whatever the system colour scheme. Every quote is shown
 exactly as stored, every Bates label links to its page in the source PDF, and
 anything the bundle check found wrong is shown, never hidden.
+
+Clicking a Bates label opens a floating window on the same page with the full
+text of the cited page, the quote highlighted at its cited characters, and the
+PDF page itself. Ctrl/Cmd-click still opens the PDF in a new tab.
 
 Layout follows the chrono timeline:
 
     2024-03-14        ED note · Mountain View Regional ED
     day of incident   [cervical spine] [diagnosis] [ICD10CM S16.1XXA]
                       ┃ Assessment: Cervical strain.
-                      [SYN 000001 ↗]
+                      [SYN 000001]
 """
 
 from __future__ import annotations
 
 import html
+import json
 import os
 from pathlib import Path
 from urllib.parse import quote as urlquote
@@ -110,8 +116,13 @@ def span_block(span_id: str, ix: BundleIndex, case_dir: Path | None, out_dir: Pa
     doc = ix.documents.get(span.doc_id)
     href = page_href(doc.path, span.page_index, case_dir, out_dir) if doc else None
     loc = locator_text(span, ix)
+    ctx = f' data-ctx="{e(span_id)}" aria-haspopup="dialog"' if page is not None else ""
     if href:
-        bates = f'<a class="bates" href="{e(href)}" target="_blank" rel="noopener">{e(loc)} ↗</a>'
+        bates = (f'<a class="bates" href="{e(href)}" target="_blank" rel="noopener"{ctx}'
+                 f' title="Show this page here (Ctrl-click opens the PDF in a new tab)">{e(loc)}</a>')
+    elif page is not None:
+        bates = (f'<button type="button" class="bates nolink"{ctx}'
+                 f' title="Source PDF not found; shows the page text">{e(loc)}</button>')
     else:
         bates = f'<span class="bates nolink" title="Source PDF not found">{e(loc)}</span>'
     extra = []
@@ -248,6 +259,33 @@ def _first_locator(event: ChronologyEvent, ix: BundleIndex) -> str:
     return "~"
 
 
+def context_data(ix: BundleIndex, case_dir: Path | None, out_dir: Path) -> str:
+    """Page text and span positions for the floating page window, as JSON.
+
+    Safe to put inside <script type="application/json">: every "<" is
+    escaped, so the text can never close the script element.
+    """
+    pages = {}
+    for (doc_id, pi), p in ix.pages.items():
+        doc = ix.documents.get(doc_id)
+        title = doc_title(doc.path) if doc else doc_id
+        pages[f"{doc_id}:{pi}"] = {
+            "text": p.text,
+            "label": p.bates_label or f"Unstamped · {title} p.{pi + 1}",
+            "title": title,
+            "type": pretty(p.page_type),
+            "page": pi + 1,
+            "pages": doc.page_count if doc else None,
+            "ocr": (p.ocr_confidence if p.ocr_confidence is not None else -1)
+                   if p.text_source == "ocr" else None,
+            "href": page_href(doc.path, pi, case_dir, out_dir) if doc else None,
+        }
+    spans = {s.span_id: {"page": f"{s.doc_id}:{s.page_index}", "start": s.char_start,
+                         "end": s.char_end, "ok": ix.verified.get(s.span_id, False)}
+             for s in ix.spans.values()}
+    return json.dumps({"pages": pages, "spans": spans}, ensure_ascii=False).replace("<", "\\u003c")
+
+
 # --- the page ----------------------------------------------------------------
 
 def render(bundle: ChronologyBundle, *, case_dir: Path | None, out_dir: Path) -> str:
@@ -331,6 +369,7 @@ def render(bundle: ChronologyBundle, *, case_dir: Path | None, out_dir: Path) ->
         assertion_options=options(assertions, lambda a: "denied / absent" if a == "absent" else a),
         rows="\n".join(rows),
         total=len(bundle.events),
+        context=context_data(ix, case_dir, out_dir),
         css=CSS,
         js=JS,
     )
@@ -362,12 +401,8 @@ CSS = """
 --warn-bg:#fdf2dc;--warn-ink:#7a4d00;--bad-bg:#fbe5e3;--bad-ink:#a1251b;--bad:#c4372b;
 --absent-bg:#ece6f7;--absent-ink:#4a2a8a;--ok-bg:#e3f2e6;--ok-ink:#1e6b33;
 --incident-bg:#fff1d6;--incident-line:#d48a00;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
---sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-@media (prefers-color-scheme:dark){:root{--bg:#16181b;--panel:#1d2024;--ink:#e6e3de;--muted:#9aa1a9;
---line:#30343a;--quote-bg:#24282d;--accent:#8ab4f8;--site-bg:#1f2d44;--site-ink:#b6cdf5;
---warn-bg:#3a2d12;--warn-ink:#f2c879;--bad-bg:#3d1c19;--bad-ink:#f3a59d;--bad:#e0675b;
---absent-bg:#2c2440;--absent-ink:#cdbaf5;--ok-bg:#1b3322;--ok-ink:#9ad8a9;
---incident-bg:#3a2e14;--incident-line:#e3a43a}}
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mark-bg:#ffe08a;--mark-ink:#1f2328;
+--shadow:0 12px 40px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.08);color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
 header,main,.filters-inner{max-width:1040px;margin:0 auto;padding:0 20px}
@@ -417,8 +452,41 @@ pre.quote.unverified{border:2px solid var(--bad);border-left-width:4px}
 .locators{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px}
 .bates{font:600 12px var(--mono);padding:2px 8px;border-radius:6px;border:1px solid var(--accent);
 color:var(--accent);text-decoration:none;background:var(--panel)}
-a.bates:hover,a.bates:focus{background:var(--accent);color:var(--panel)}
+a.bates:hover,a.bates:focus,a.bates[aria-expanded=true]{background:var(--accent);color:var(--panel)}
 .bates.nolink{border-color:var(--line);color:var(--muted)}
+button.bates{cursor:pointer}
+button.bates:hover,button.bates:focus,button.bates[aria-expanded=true]{border-color:var(--muted);color:var(--ink)}
+.ctx{position:fixed;z-index:10;top:72px;right:24px;width:min(580px,calc(100vw - 32px));
+height:min(70vh,640px);min-width:300px;min-height:220px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);
+display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border:1px solid var(--line);
+border-radius:10px;box-shadow:var(--shadow);resize:both;overflow:hidden}
+.ctx[hidden]{display:none}
+.ctx-head{display:flex;gap:10px;align-items:flex-start;padding:10px 12px 8px;border-bottom:1px solid var(--line);
+cursor:move;user-select:none;touch-action:none}
+.ctx-head>div{flex:1;min-width:0}
+.ctx-title{font:600 13px var(--mono);color:var(--accent)}
+.ctx-sub{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctx-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.ctx button,.ctx-bar a{font:inherit;font-size:12.5px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+border-radius:6px;padding:2px 9px;cursor:pointer;text-decoration:none}
+.ctx button:hover:not(:disabled),.ctx-bar a:hover{border-color:var(--accent);color:var(--accent)}
+.ctx button:disabled{opacity:.45;cursor:default}
+.ctx button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.ctx-head .ctx-x{border:0;font-size:20px;line-height:1;padding:0 4px;color:var(--muted)}
+.ctx-tabs{display:inline-flex;gap:4px;margin-left:auto}
+.ctx-warn{margin:8px 12px 0;padding:6px 10px;border-radius:6px;font-size:12.5px;background:var(--warn-bg);color:var(--warn-ink)}
+.ctx-warn.bad{background:var(--bad-bg);color:var(--bad-ink)}
+.ctx-warn[hidden]{display:none}
+.ctx:focus{outline:none}
+.ctx-body{position:relative;flex:1;overflow:auto;margin:0;padding:12px 14px;font:13px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word}
+.ctx-body:focus{outline:none}
+.ctx-body mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;box-shadow:0 0 0 2px var(--mark-bg)}
+.ctx-pdf{flex:1;display:flex;min-height:0}
+.ctx-pdf[hidden]{display:none}
+.ctx-pdf object{flex:1;width:100%;height:100%;border:0}
+.ctx-pdf p{margin:12px 14px;color:var(--muted);font-size:13px}
+@media (max-width:640px){.ctx{top:auto!important;left:0!important;right:0;bottom:0;width:100%!important;max-width:100%;
+height:62vh!important;border-radius:12px 12px 0 0;resize:none}.ctx-head{cursor:default}}
 .incident{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin:14px 0;padding:10px 14px;
 background:var(--incident-bg);border-left:5px solid var(--incident-line);border-radius:6px}
 .incident .tag{font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:12px;color:var(--warn-ink)}
@@ -428,7 +496,7 @@ background:var(--incident-bg);border-left:5px solid var(--incident-line);border-
 .error{color:var(--bad-ink);background:var(--bad-bg);border-radius:6px;padding:4px 8px;margin:4px 0;font-size:13px}
 .hidden{display:none}
 @media (max-width:640px){.entry{grid-template-columns:1fr;gap:4px}.when{display:flex;gap:10px;align-items:baseline}}
-@media print{.filters{display:none}body{background:#fff;color:#000}.entry{break-inside:avoid}
+@media print{.filters,.ctx{display:none}body{background:#fff;color:#000}.entry{break-inside:avoid}
 .bates{border-color:#000;color:#000}}
 """
 
@@ -453,6 +521,91 @@ JS = """
   }
   ['injury','type','site','assertion','attn'].forEach(function(k){f[k].addEventListener('change',apply);});
   f.q.addEventListener('input',apply);apply();
+})();
+(function(){
+  var data=JSON.parse(document.getElementById('ctx-data').textContent);
+  function $(id){return document.getElementById(id);}
+  var box=$('ctx'),head=$('ctx-head'),title=$('ctx-title'),sub=$('ctx-sub'),warn=$('ctx-warn'),
+    body=$('ctx-body'),pdf=$('ctx-pdf'),prev=$('ctx-prev'),next=$('ctx-next'),
+    tText=$('ctx-t-text'),tPdf=$('ctx-t-pdf'),open=$('ctx-open');
+  var trigger=null,cur=null,span=null,mode='text',drag=null;
+  function step(k,d){var i=k.lastIndexOf(':');return k.slice(0,i)+':'+(+k.slice(i+1)+d);}
+  function setMode(m){
+    mode=m;
+    tText.setAttribute('aria-pressed',String(m==='text'));tPdf.setAttribute('aria-pressed',String(m==='pdf'));
+    body.hidden=m!=='text';pdf.hidden=m!=='pdf';pdf.textContent='';
+    if(m==='pdf'){
+      var o=document.createElement('object');o.type='application/pdf';o.data=data.pages[cur].href;
+      var fb=document.createElement('p');
+      fb.textContent='This browser cannot show the PDF here. Use "Open in new tab" instead.';
+      o.appendChild(fb);pdf.appendChild(o);
+    }
+  }
+  function show(k){
+    var p=data.pages[k];if(!p)return;
+    cur=k;
+    title.textContent=p.label;
+    sub.textContent=[p.title,p.type,'page '+p.page+(p.pages?' of '+p.pages:'')].filter(Boolean).join(' \\u00b7 ');
+    body.textContent='';
+    var here=span&&span.page===k,hit=null,msgs=[];
+    if(here){
+      var a=Math.max(0,Math.min(span.start,p.text.length)),b=Math.max(a,Math.min(span.end,p.text.length));
+      hit=document.createElement('mark');hit.textContent=p.text.slice(a,b);
+      body.appendChild(document.createTextNode(p.text.slice(0,a)));body.appendChild(hit);
+      body.appendChild(document.createTextNode(p.text.slice(b)));
+      if(!span.ok)msgs.push('This quote did not match the page text at its cited characters. '
+        +'The highlight shows what is actually there.');
+    }else body.textContent=p.text;
+    if(p.ocr!==null)msgs.push('Text read by OCR'+(p.ocr>=0?' ('+Math.round(p.ocr*100)+'% confidence)':'')
+      +'; check it against the PDF.');
+    warn.textContent=msgs.join(' ');warn.hidden=!msgs.length;
+    warn.className='ctx-warn'+(here&&!span.ok?' bad':'');
+    prev.disabled=!data.pages[step(k,-1)];next.disabled=!data.pages[step(k,1)];
+    tPdf.disabled=!p.href;open.hidden=!p.href;if(p.href)open.href=p.href;
+    setMode(p.href?mode:'text');
+    body.scrollTop=hit?Math.max(0,hit.offsetTop-body.clientHeight/3):0;
+  }
+  function openFor(t){
+    var s=data.spans[t.getAttribute('data-ctx')];if(!s)return;
+    if(trigger)trigger.setAttribute('aria-expanded','false');
+    trigger=t;t.setAttribute('aria-expanded','true');span=s;
+    var first=box.hidden&&!box.style.left;
+    box.hidden=false;
+    if(first){var r=box.getBoundingClientRect();box.style.left=r.left+'px';box.style.right='auto';}
+    show(s.page);
+    box.focus({preventScroll:true});
+  }
+  function close(){
+    if(box.hidden)return;
+    box.hidden=true;pdf.textContent='';
+    if(trigger){trigger.setAttribute('aria-expanded','false');trigger.focus({preventScroll:true});trigger=null;}
+  }
+  document.addEventListener('click',function(ev){
+    var t=ev.target.closest&&ev.target.closest('[data-ctx]');
+    if(!t||ev.button!==0||ev.ctrlKey||ev.metaKey||ev.shiftKey||ev.altKey)return;
+    ev.preventDefault();
+    if(t===trigger&&!box.hidden)close();else openFor(t);
+  });
+  document.addEventListener('keydown',function(ev){
+    if(ev.key==='Escape'&&!box.hidden){ev.preventDefault();close();}
+  });
+  $('ctx-close').addEventListener('click',close);
+  prev.addEventListener('click',function(){show(step(cur,-1));});
+  next.addEventListener('click',function(){show(step(cur,1));});
+  tText.addEventListener('click',function(){setMode('text');show(cur);});
+  tPdf.addEventListener('click',function(){setMode('pdf');});
+  head.addEventListener('pointerdown',function(ev){
+    if(ev.button!==0||ev.target.closest('button')||window.matchMedia('(max-width:640px)').matches)return;
+    var r=box.getBoundingClientRect();drag={x:ev.clientX-r.left,y:ev.clientY-r.top};
+    head.setPointerCapture(ev.pointerId);
+  });
+  head.addEventListener('pointermove',function(ev){
+    if(!drag)return;
+    box.style.left=Math.min(Math.max(0,ev.clientX-drag.x),window.innerWidth-80)+'px';
+    box.style.top=Math.min(Math.max(0,ev.clientY-drag.y),window.innerHeight-40)+'px';
+  });
+  head.addEventListener('pointerup',function(){drag=null;});
+  head.addEventListener('pointercancel',function(){drag=null;});
 })();
 """
 
@@ -479,6 +632,22 @@ PAGE = """<!doctype html>
 <main>
 {rows}
 </main>
+<aside class="ctx" id="ctx" role="dialog" aria-modal="false" aria-labelledby="ctx-title" tabindex="-1" hidden>
+<div class="ctx-head" id="ctx-head"><div><div class="ctx-title" id="ctx-title"></div>
+<div class="ctx-sub" id="ctx-sub"></div></div>
+<button type="button" class="ctx-x" id="ctx-close" aria-label="Close" title="Close (Esc)">&times;</button></div>
+<div class="ctx-bar">
+<button type="button" id="ctx-prev">&lsaquo; Prev page</button>
+<button type="button" id="ctx-next">Next page &rsaquo;</button>
+<span class="ctx-tabs"><button type="button" id="ctx-t-text" aria-pressed="true">Text</button>
+<button type="button" id="ctx-t-pdf" aria-pressed="false">PDF</button>
+<a id="ctx-open" target="_blank" rel="noopener">Open in new tab &#8599;</a></span>
+</div>
+<div class="ctx-warn" id="ctx-warn" role="note" hidden></div>
+<pre class="ctx-body" id="ctx-body" tabindex="0"></pre>
+<div class="ctx-pdf" id="ctx-pdf" hidden></div>
+</aside>
+<script type="application/json" id="ctx-data">{context}</script>
 <script>{js}</script>
 </body></html>
 """

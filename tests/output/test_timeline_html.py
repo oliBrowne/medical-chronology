@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -49,6 +50,31 @@ def test_every_locator_links_to_its_page(case):
         from urllib.parse import unquote
         target = (out / unquote(path)).resolve()
         assert target.name == docs[span.doc_id].path and target.is_file()
+
+
+def test_every_locator_opens_the_page_window(case):
+    bundle, page, _, _ = case
+    for span in bundle.spans:
+        block = page.split(f'data-span="{span.span_id}"', 1)[1].split("</div>", 1)[0]
+        assert f'data-ctx="{span.span_id}"' in block
+
+
+def test_page_window_data_matches_the_quotes(case):
+    bundle, page, _, _ = case
+    raw = page.split('<script type="application/json" id="ctx-data">', 1)[1].split("</script>", 1)[0]
+    assert "<" not in raw
+    data = json.loads(raw)
+    for span in bundle.spans:
+        s = data["spans"][span.span_id]
+        text = data["pages"][s["page"]]["text"]
+        assert s["ok"] and text[s["start"]:s["end"]] == span.quote
+
+
+def test_page_window_works_without_the_pdf(case):
+    bundle, _, out, root = case
+    page = render(bundle, case_dir=root / "nowhere", out_dir=out)
+    assert '<button type="button" class="bates nolink" data-ctx=' in page
+    assert '"href": null' in page
 
 
 def test_exactly_one_incident_bar_with_correct_split(case):

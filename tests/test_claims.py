@@ -7,7 +7,7 @@ from chronology.schemas import Page
 from chronology.stages.claims import build_claims, claim_type, heading_before, render_claims_markdown
 
 SUMMARY = Path(__file__).resolve().parent.parent / "sample_data" / "case_2" / "case_summary.md"
-TEXT = SUMMARY.read_text()
+TEXT = SUMMARY.read_text(encoding="utf-8")
 PAGE = Page(doc_id="case_summary", page_index=0, text=TEXT, text_source="native")
 
 DATES = [{"date": "05/09/2024", "role": "incident_date"},

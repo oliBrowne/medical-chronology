@@ -31,7 +31,72 @@ PAGE_TYPES: dict[str, str] = {
     "billing": "Bill, invoice, itemized charges, claim form or ledger",
     "fax_cover": "Fax cover sheet or transmittal page with no clinical content",
     "records_admin": "Records request, certification of records, authorization or other administrative form",
+    "lab_result": "Laboratory or pathology result (blood work, urinalysis, cultures)",
+    "ems_report": "Ambulance or EMS patient care report",
+    "patient_form": "Form filled in by or for the patient: intake questionnaire, pain diagram, employer injury report, work-status or disability form",
+    "legal_correspondence": "Letter or filing from an attorney, insurer or court (demand letter, subpoena, claim correspondence)",
+    "education_handout": "Generic patient-education handout or home-care instructions not specific to this patient",
     "other": "None of the above, or unclear",
+}
+
+# The first ten labels, as used in the first tests; kept so old runs can be
+# repeated and compared.
+PAGE_TYPES_V1: dict[str, str] = {
+    k: v for k, v in PAGE_TYPES.items()
+    if k not in {"lab_result", "ems_report", "patient_form", "legal_correspondence", "education_handout"}
+}
+
+
+# The same 15 labels with sharper wording: what each includes and what it does
+# not, written from the mix-ups seen in testing (discharge instructions read
+# as a handout, a phone note read as "other", a clinical page with a fax
+# header line read as a fax cover, a blank page read as records admin).
+PAGE_TYPES_DETAILED: dict[str, str] = {
+    "ed_note": ("Emergency department record for this patient's visit: triage, ED physician or nurse "
+                "note, or ED discharge instructions naming this visit's diagnosis or prescriptions"),
+    "office_visit": ("Clinic, urgent care, primary care or specialist visit or progress note, including a "
+                     "telephone, portal or nurse-call encounter about this patient's care"),
+    "therapy_note": "Physical, occupational or chiropractic therapy evaluation, daily note, flowsheet or plan of care",
+    "imaging_report": "Radiology or imaging report (X-ray, CT, MRI, ultrasound) with findings or an impression",
+    "procedure_report": ("Operative, injection, nerve block or other procedure report, including the consent "
+                         "or anesthesia record for that procedure"),
+    "medication_record": ("Medication list, prescription, pharmacy printout or medication administration "
+                          "record (MAR)"),
+    "billing": ("Bill, invoice, itemized charges, claim form (CMS-1500, UB-04), explanation of benefits or "
+                "account ledger: charges and codes, no written clinical notes"),
+    "fax_cover": ("Fax cover or transmittal sheet itself: sender, recipient, page count, confidentiality "
+                  "notice. Not a clinical page that only has a fax header line printed across the top"),
+    "records_admin": ("Administrative page about the records themselves: records request, custodian "
+                      "certification or affidavit, HIPAA authorization, release-of-information log, or an "
+                      "index of the records produced"),
+    "lab_result": "Laboratory or pathology result (blood work, urinalysis, cultures, biopsy)",
+    "ems_report": "Ambulance or EMS patient care report",
+    "patient_form": ("Form filled in by or for the patient: intake questionnaire, pain diagram, employer "
+                     "injury report, work-status or disability form"),
+    "legal_correspondence": ("Letter or filing from an attorney, insurer or court (demand letter, subpoena, "
+                             "claim correspondence)"),
+    "education_handout": ("Generic printed patient-education material (about a condition, exercises, home "
+                          "care) that does not mention this patient's visit, diagnosis or prescriptions"),
+    "other": "Fits none of the types above: a blank or separator page, an image placeholder, or unreadable text",
+}
+
+# Five more labels for pages that kept landing in "other" on the held-out
+# pages. None of them is a type that can be held back from the page agent;
+# they only give the page agent a better hint. Tests score them as "other".
+EXTRA_PAGE_TYPES: dict[str, str] = {
+    "inpatient_record": ("Inpatient hospital record: admission history and physical, progress note on the "
+                         "ward, hospital course or discharge summary"),
+    "flowsheet": "Nursing flowsheet or vital-signs chart: rows of times with blood pressure, pulse, pain score",
+    "police_report": "Police, incident or traffic crash report",
+    "admin_letter": ("Letter or notice about appointments, missed visits or scheduling. A bill, statement "
+                     "or collections notice is billing"),
+    "blank_or_separator": ("Blank page, separator or cover sheet inside a production, 'continued' page, or a "
+                           "page holding only a signature"),
+}
+PAGE_TYPES_EXTENDED: dict[str, str] = {
+    **{k: v for k, v in PAGE_TYPES_DETAILED.items() if k != "other"},
+    **EXTRA_PAGE_TYPES,
+    "other": "Fits none of the types above, or unreadable text",
 }
 
 
@@ -47,6 +112,21 @@ def load_api_key(env_file: Path | None = None) -> str:
             if name.strip() == "TYPESAFE_API_KEY" and value.strip():
                 return value.strip().strip('"').strip("'")
     raise SystemExit("TYPESAFE_API_KEY is not set. Add it to .env (see .env.example).")
+
+
+def real_text_allowed(case: Path, zdr_flag: bool) -> tuple[bool, str]:
+    """Whether a case folder's page text may be sent to Jev, and why.
+
+    Allowed for a made-up case (a SYNTHETIC marker in the folder), or once zero
+    data retention is confirmed by both ``zdr_flag`` (``--zdr-confirmed``) and
+    TYPESAFE_ZDR_CONFIRMED=yes in the environment. Both, on purpose.
+    """
+    if (case / "SYNTHETIC").exists():
+        return True, "synthetic case (SYNTHETIC marker present)"
+    if zdr_flag and os.environ.get("TYPESAFE_ZDR_CONFIRMED", "").lower() == "yes":
+        return True, "zero data retention confirmed (--zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes)"
+    return False, ("not allowed: this is not a synthetic case and zero data retention is not confirmed. "
+                   "Use code-only triage, or confirm ZDR with both --zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes.")
 
 
 def page_type_question(labels: dict[str, str] = PAGE_TYPES) -> dict:

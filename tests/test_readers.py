@@ -1,0 +1,109 @@
+import json
+from pathlib import Path
+
+from chronology import readers, triage
+from chronology.llm import jev
+
+PAGES = {p["id"]: p for p in json.loads(
+    (Path(__file__).parents[1] / "scripts/jev/efficiency_pages.json").read_text())}
+
+
+def test_table_reader_quotes_are_verbatim_slices():
+    text = PAGES["eff-12"]["text"]
+    table = readers.read_table(text, "medication_record")
+    assert table.accepted
+    for row in table.rows:
+        assert text[row.char_start:row.char_end] == row.quote
+
+
+def test_table_reader_reads_billing_codes_and_diagnoses():
+    text = "DOS 03/21/2024  99213 Office visit  $145.00\nDOS 03/21/2024  Dx: S16.1XXA"
+    rows = readers.read_table(text, "billing").rows
+    assert rows[0].codes == ["99213"] and rows[0].amount == "$145.00"
+    assert rows[1].diagnoses == ["S16.1XXA"]
+
+
+def test_table_reader_refuses_narrative():
+    assert not readers.read_table(PAGES["eff-14"]["text"], "medication_record").accepted
+    assert not readers.read_table(PAGES["eff-15"]["text"], "lab_result").accepted
+    assert not readers.read_table("Anything", "office_visit").accepted
+
+
+def test_copy_forward_reads_only_new_lines():
+    memory = readers.LineMemory()
+    first, second = PAGES["eff-06"]["text"], PAGES["eff-08"]["text"]
+    memory.add(first)
+    cf = memory.diff(second)
+    new = "\n".join(second[s:e] for s, e in cf.new_spans)
+    assert cf.worth_it
+    assert "new tingling in left thumb" in new
+    assert "Paraspinal tenderness" not in new
+
+
+def test_reader_model():
+    assert readers.reader_model("lab_result", 500) == "small"
+    assert readers.reader_model("lab_result", 5000) == "large"
+    assert readers.reader_model("office_visit", 500) == "large"
+    assert readers.reader_model(None, 100) == "large"
+
+
+def _ask_by_marker(table):
+    def ask(state, qs):
+        this = state.split("[THIS PAGE]\n", 1)[1].split("\n\n[", 1)[0]
+        page_type, clinical = next(v for k, v in table.items() if k in this)
+        return {"answers": {"page_type": {"choice": page_type, "probabilities": {page_type: 0.99}},
+                            "clinical": {"choice": clinical, "probabilities": {clinical: 0.99}}},
+                "usage": {"input_tokens": 1}}
+    ask.calls = 0
+    return ask
+
+
+def test_template_reuse_skips_jev_but_not_a_page_with_a_clinical_comment():
+    # templates are per file: the three covers sit in one file here
+    pages = [dict(PAGES[i], doc="faxes", seq=n) for n, i in enumerate(("eff-09", "eff-10", "eff-11"), 1)]
+    calls = []
+    inner = _ask_by_marker({"FAX COVER": ("fax_cover", "no")})
+
+    def ask(state, qs):
+        calls.append(state)
+        return inner(state, qs)
+
+    res = {r.id: r for r in triage.triage_pages(pages, ask, jev.PAGE_TYPES, glance=False)}
+    assert res["eff-10"].decision.type_source == "template"
+    assert res["eff-10"].decision.route == "skip"
+    assert res["eff-11"].decision.route == "full"   # new comment line: no reuse, keyword net
+    assert len(calls) == 2
+
+
+def test_billing_run_inherits_and_goes_to_table_reader():
+    pages = [dict(PAGES[f"eff-0{i}"]) for i in range(1, 6)]
+    calls = []
+    inner = _ask_by_marker({"ITEMIZED": ("billing", "no")})
+
+    def ask(state, qs):
+        calls.append(state)
+        return inner(state, qs)
+
+    res = triage.triage_pages(pages, ask, jev.PAGE_TYPES, use_headers=False, use_templates=False)
+    assert [r.decision.type_source for r in res] == ["direct", "direct", "run", "run", "run"]
+    assert all(r.decision.route == "reader" for r in res)
+    assert len(calls) == 2
+
+
+def test_table_reader_keeps_allergies_and_header_dates():
+    text = PAGES["eff-13"]["text"]
+    rows = readers.read_table(text, "lab_result").rows
+    assert all(r.date == "03/14/2024" for r in rows if r.kind == "lab")
+    mar = readers.read_table(PAGES["eff-12"]["text"], "medication_record").rows
+    assert any(r.kind == "allergy" and "NKDA" in r.quote for r in mar)
+
+
+def test_dated_clinical_sentence_on_a_bill_sends_it_to_a_full_read():
+    text = ("CLAIM\n04/02/24 99213 Office visit $150.00\n04/03/24 97110 Ther ex $96.00\n"
+            "04/02/24 Pt has severe spasm radiating to left arm, MRI ordered")
+    assert not readers.read_table(text, "billing").accepted
+
+
+def test_zip_code_is_not_a_charge_and_lab_value_is_not_the_date():
+    assert readers._row("billing", 0, 0, "Springfield, IL 62704") is None
+    assert readers._row("lab", 0, 0, "03/14/2024 Glucose 182 mg/dL (H)").value == "182"

@@ -57,14 +57,20 @@ pytest
 ```
 
 For the UMLS stage, copy `.env.example` to `.env` and add your own UMLS API
-key from https://uts.nlm.nih.gov/ (keys are per person under the UMLS license).
+key from https://uts.nlm.nih.gov/ (keys are per person under the UMLS license),
+then build the local SNOMED CT index once from your UMLS download, so record
+phrases are never sent anywhere: see [docs/snomed-index.md](docs/snomed-index.md).
 
 ## Status
 
-Scaffold only. Done so far: the data schemas, Bates filename parsing and stamp
-detection, and the exact-quote check. Stages 1 to 4 are stubs. A good first
-target is the smallest case (about 60 pages), scored against the physician's
-existing chronology for that case.
+Done so far: the data schemas, Bates filename parsing and stamp detection, the
+exact-quote check, and page triage (the end of stage 1): every page is sorted
+by TypeSafe's Jev model and code into index only, a table reader, or the page
+agent, failing open. How it works, the safety guards, test results on made-up
+pages and next steps are in [docs/jev-triage.md](docs/jev-triage.md). PDF
+parsing and stages 2 to 4 are still stubs. A good first target is the smallest
+case (about 60 pages), scored against the physician's existing chronology for
+that case.
 
 ## Team
 

@@ -13,7 +13,8 @@ dependencies = ["pydantic>=2", "dateparser>=1.2"]
 chronology = "chronology.pipeline:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pymupdf>=1.24"]
+pdf = ["pymupdf>=1.24"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

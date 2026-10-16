@@ -1,69 +1,69 @@
-"""UMLS / SNOMED CT search. Local index first; the UMLS web API only if asked.
+"""UMLS web API search: a development fallback for the local SNOMED index.
 
-The default is the local index (``tools.snomed_index``): no phrase leaves the
-machine. The web API is a development fallback, used only when there is no
-local index AND ``UMLS_WEB_FALLBACK=yes`` is set; it sends the phrase (never
-page text or identifiers) with the key from ``UMLS_API_KEY``.
+This sends the phrase to the National Library of Medicine, so it is off
+unless a developer opts in with ``UMLS_WEB_FALLBACK=1``, and it needs the
+developer's own ``UMLS_API_KEY`` (https://uts.nlm.nih.gov/; keys are per
+person under the UMLS licence). Use it only with made-up phrases. Real record
+phrases are looked up in the local index (``tools.snomed_index``), which
+never leaves the machine.
+
+Only the clinical phrase is sent: never page text, names, dates or record
+numbers.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
-from functools import cache
-from pathlib import Path
 
-from chronology.tools.snomed_index import SAB, SnomedIndex, default_index_path
-
-UTS_SEARCH = "https://uts-ws.nlm.nih.gov/rest/search/current"
+API = "https://uts-ws.nlm.nih.gov/rest"
+SAB = "SNOMEDCT_US"
 
 
-@cache
-def _index(path: str | None) -> SnomedIndex | None:
-    found = Path(path) if path else default_index_path()
-    return SnomedIndex(found) if found else None
+def web_allowed() -> bool:
+    return os.environ.get("UMLS_WEB_FALLBACK", "").strip() in ("1", "true", "yes")
 
 
-def umls_search(phrase: str, max_results: int = 10, semantic_types: list[str] | None = None,
-                index_path: str | None = None) -> list[dict]:
-    """Candidate SNOMED CT concepts for one clinical phrase, best first.
+def _key() -> str:
+    key = os.environ.get("UMLS_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("UMLS_API_KEY is not set (each person uses their own key from uts.nlm.nih.gov)")
+    return key
 
-    Each candidate has cui, code, name, preferred_name, tag, semantic_types,
-    match, score and release. ``index_path`` (or ``SNOMED_INDEX``) picks an
-    index file; otherwise the newest under ``data/umls/`` is used.
+
+def _get(path: str, params: dict) -> dict:
+    query = urllib.parse.urlencode({**params, "apiKey": _key()})
+    with urllib.request.urlopen(f"{API}{path}?{query}", timeout=30) as response:
+        return json.load(response)
+
+
+def umls_search(phrase: str, max_results: int = 10, version: str = "current") -> list[dict]:
+    """SNOMED CT candidates for a phrase from the UMLS web API.
+
+    Returns dicts shaped like the local index's results (``code``, ``cui``,
+    ``name``, ``matched``, ``match``, ``release``), with ``tag`` and
+    ``semantic_types`` left empty: the web search does not return them.
     """
-    index = _index(index_path or os.environ.get("SNOMED_INDEX"))
-    if index is not None:
-        return [c.to_dict() for c in index.search(phrase, max_results, semantic_types)]
-    if os.environ.get("UMLS_WEB_FALLBACK", "").lower() == "yes":
-        return _web_search(phrase, max_results)
-    raise FileNotFoundError(
-        "no local SNOMED index: build one with scripts/umls/build_snomed_index.py "
-        "(or set UMLS_WEB_FALLBACK=yes to use the UMLS web API during development)")
-
-
-def _env_value(name: str, env_file: Path = Path(".env")) -> str:
-    """A setting from the environment, falling back to a .env file."""
-    if os.environ.get(name):
-        return os.environ[name]
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            key, _, value = line.partition("=")
-            if key.strip() == name and value.strip():
-                return value.strip().strip('"').strip("'")
-    raise SystemExit(f"{name} is not set. Add it to .env (see .env.example).")
-
-
-def _web_search(phrase: str, max_results: int) -> list[dict]:
-    """UMLS web API search limited to SNOMED CT. Development only."""
-    key = _env_value("UMLS_API_KEY")
-    query = urllib.parse.urlencode({"string": phrase, "sabs": SAB, "returnIdType": "code",
-                                    "pageSize": max_results, "apiKey": key})
-    with urllib.request.urlopen(f"{UTS_SEARCH}?{query}", timeout=30) as response:
-        results = json.load(response)["result"]["results"]
-    return [{"cui": None, "code": r["ui"], "name": r["name"], "preferred_name": r["name"],
-             "tag": None, "semantic_types": [], "match": "web", "score": None,
-             "release": "current (web API)"}
-            for r in results if r.get("ui") not in (None, "NONE")][:max_results]
+    if not web_allowed():
+        raise PermissionError("UMLS web search is off; set UMLS_WEB_FALLBACK=1 to allow it "
+                              "(development only, made-up phrases only)")
+    phrase = phrase.strip()
+    if not phrase:
+        return []
+    try:
+        data = _get(f"/search/{version}", {"string": phrase, "sabs": SAB, "returnIdType": "code",
+                                           "searchType": "words", "pageSize": max_results})
+    except urllib.error.HTTPError as err:
+        raise RuntimeError(f"UMLS API returned HTTP {err.code}") from err
+    out = []
+    for item in data.get("result", {}).get("results", [])[:max_results]:
+        code = item.get("ui")
+        if not code or code == "NONE":
+            continue
+        out.append({"code": code, "cui": None, "name": item.get("name", ""),
+                    "matched": item.get("name", ""), "tag": None, "semantic_types": [],
+                    "match": "web", "score": 0.0, "release": version})
+    return out

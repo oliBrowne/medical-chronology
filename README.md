@@ -57,7 +57,9 @@ pytest
 ```
 
 For the UMLS stage, copy `.env.example` to `.env` and add your own UMLS API
-key from https://uts.nlm.nih.gov/ (keys are per person under the UMLS license).
+key from https://uts.nlm.nih.gov/ (keys are per person under the UMLS license),
+then build the local SNOMED CT index once from your UMLS download, so record
+phrases are never sent anywhere: see [docs/snomed-index.md](docs/snomed-index.md).
 
 ## Status
 

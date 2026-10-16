@@ -114,6 +114,21 @@ def load_api_key(env_file: Path | None = None) -> str:
     raise SystemExit("TYPESAFE_API_KEY is not set. Add it to .env (see .env.example).")
 
 
+def real_text_allowed(case: Path, zdr_flag: bool) -> tuple[bool, str]:
+    """Whether a case folder's page text may be sent to Jev, and why.
+
+    Allowed for a made-up case (a SYNTHETIC marker in the folder), or once zero
+    data retention is confirmed by both ``zdr_flag`` (``--zdr-confirmed``) and
+    TYPESAFE_ZDR_CONFIRMED=yes in the environment. Both, on purpose.
+    """
+    if (case / "SYNTHETIC").exists():
+        return True, "synthetic case (SYNTHETIC marker present)"
+    if zdr_flag and os.environ.get("TYPESAFE_ZDR_CONFIRMED", "").lower() == "yes":
+        return True, "zero data retention confirmed (--zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes)"
+    return False, ("not allowed: this is not a synthetic case and zero data retention is not confirmed. "
+                   "Use code-only triage, or confirm ZDR with both --zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes.")
+
+
 def page_type_question(labels: dict[str, str] = PAGE_TYPES) -> dict:
     return {
         "type": "choice",

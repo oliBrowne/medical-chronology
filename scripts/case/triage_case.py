@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import sys
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -45,13 +44,7 @@ from chronology.stages import parse  # noqa: E402
 HELD_BACK = ("skip", "reader", "duplicate", "billing")
 
 
-def jev_allowed(case: Path, zdr_flag: bool) -> tuple[bool, str]:
-    if (case / "SYNTHETIC").exists():
-        return True, "synthetic case (SYNTHETIC marker present)"
-    if zdr_flag and os.environ.get("TYPESAFE_ZDR_CONFIRMED", "").lower() == "yes":
-        return True, "zero data retention confirmed (--zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes)"
-    return False, ("not allowed: this is not a synthetic case and zero data retention is not confirmed. "
-                   "Use --code-only, or confirm ZDR with both --zdr-confirmed and TYPESAFE_ZDR_CONFIRMED=yes.")
+jev_allowed = jev.real_text_allowed
 
 
 def main() -> None:

@@ -11,7 +11,7 @@ KNOWLEDGE_DIR = Path(__file__).resolve().parents[3] / "knowledge"
 
 @cache
 def _load(name: str) -> dict:
-    return json.loads((KNOWLEDGE_DIR / name).read_text())
+    return json.loads((KNOWLEDGE_DIR / name).read_text(encoding="utf-8"))
 
 
 def lookup_abbreviation(abbr: str) -> list[str]:
@@ -21,4 +21,4 @@ def lookup_abbreviation(abbr: str) -> list[str]:
 
 
 def injury_profile(region: str) -> dict:
-    return json.loads((KNOWLEDGE_DIR / "injury_profiles" / f"{region}.json").read_text())
+    return json.loads((KNOWLEDGE_DIR / "injury_profiles" / f"{region}.json").read_text(encoding="utf-8"))

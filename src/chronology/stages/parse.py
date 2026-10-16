@@ -149,7 +149,7 @@ def parse_markdown(path: Path) -> tuple[SourceDocument, list[Page]]:
     """
     raw = path.read_bytes()
     pages: list[Page] = []
-    for index, chunk in enumerate(_PAGE_BREAK.split(raw.decode())):
+    for index, chunk in enumerate(_PAGE_BREAK.split(raw.decode("utf-8").replace("\r\n", "\n"))):
         text = chunk.strip()
         if not text:
             continue

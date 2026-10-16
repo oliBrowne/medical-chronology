@@ -1,7 +1,8 @@
 """Regression tests for the code-review findings fixed with v7, each built
 from the failing example in the review."""
 
-from chronology import jev, readers, triage
+from chronology import readers, triage
+from chronology.llm import jev
 
 
 def _resp(page_type, tp, clinical="yes", cp=0.99):

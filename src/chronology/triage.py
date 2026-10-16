@@ -583,7 +583,8 @@ def triage_pages(pages: list[dict], ask, labels: dict[str, str] | None = None,
                         page is unsure. Doubled first-pass calls and changed
                         nothing on the held-out pages.
     """
-    from chronology import jev, readers, segment  # local import: readers imports this module
+    from chronology import readers, segment# local import: readers imports this module
+    from chronology.llm import jev# local import: readers imports this module
 
     if labels is None:
         labels = jev.PAGE_TYPES_EXTENDED

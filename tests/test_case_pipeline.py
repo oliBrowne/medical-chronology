@@ -136,7 +136,8 @@ def test_jev_is_refused_for_a_real_case_without_zdr(tmp_path, monkeypatch):
 
 def test_generated_pages_are_well_formed_and_split_by_file():
     halves = {h: json.loads((REPO / f"scripts/jev/generated_{h}.json").read_text()) for h in ("tune", "test")}
-    from chronology import jev, triage
+    from chronology import triage
+    from chronology.llm import jev
     for pages in halves.values():
         assert len(pages) >= 150
         for p in pages:

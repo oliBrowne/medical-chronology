@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from chronology import jev, triage
+from chronology import triage
+from chronology.llm import jev
 
 
 def test_admin_page_with_no_clinical_content_is_skipped():

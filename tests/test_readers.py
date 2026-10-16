@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from chronology import jev, readers, triage
+from chronology import readers, triage
+from chronology.llm import jev
 
 PAGES = {p["id"]: p for p in json.loads(
     (Path(__file__).parents[1] / "scripts/jev/efficiency_pages.json").read_text())}

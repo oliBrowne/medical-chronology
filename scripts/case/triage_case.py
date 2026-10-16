@@ -38,7 +38,8 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "scripts" / "jev"))
 
-from chronology import jev, segment  # noqa: E402
+from chronology import segment# noqa: E402
+from chronology.llm import jev# noqa: E402
 from chronology.stages import parse  # noqa: E402
 
 HELD_BACK = ("skip", "reader", "duplicate", "billing")

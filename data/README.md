@@ -18,3 +18,10 @@ The pipeline reads Bates ranges from these filenames (see
 
 Do not paste record text into issues, PRs, commit messages or notebooks that
 get committed.
+
+## umls/
+
+`data/umls/snomed_<release>.sqlite` is the local SNOMED CT search index, built
+from your own UMLS download with `python scripts/umls/build_snomed_index.py
+<umls-<release>-metathesaurus-full.zip>`. It is licensed UMLS content: keep it
+here (gitignored), never commit or share it; each person builds their own.

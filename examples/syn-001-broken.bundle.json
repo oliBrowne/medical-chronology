@@ -1,0 +1,1051 @@
+{
+  "bundle_version": "0.1",
+  "case_id": "SYN-001",
+  "generated_at": "2026-10-13T00:00:00Z",
+  "pipeline_version": "fixture",
+  "index_event": {
+    "date": "2024-03-14",
+    "time": null,
+    "description": "Rear-end motor vehicle collision at a stoplight, restrained driver",
+    "mechanism": "MVC_rear_end"
+  },
+  "claimed_injuries": [
+    {
+      "id": "inj_cervical",
+      "label": "Cervical strain",
+      "body_sites": [
+        "neck",
+        "cervical spine"
+      ]
+    },
+    {
+      "id": "inj_shoulder",
+      "label": "Right shoulder rotator cuff tear",
+      "body_sites": [
+        "right shoulder",
+        "shoulder"
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "doc_id": "d01",
+      "path": "SYN 000001-000003 - Mountain View Regional ED.pdf",
+      "sha256": "b3c93771f2f07c75a769b6c7e0befe8438c9f4c36f3e29c79774a7459c36b68a",
+      "page_count": 3,
+      "bates_prefix": "SYN",
+      "bates_start": 1,
+      "bates_end": 3,
+      "doc_type": "medical records"
+    },
+    {
+      "doc_id": "d02",
+      "path": "SYN 000004 - Family Medicine Associates.pdf",
+      "sha256": "ca6fb434688d55e2e803cf31fe37d89d52a93fa5593b1040460c4a25646a061c",
+      "page_count": 1,
+      "bates_prefix": "SYN",
+      "bates_start": 4,
+      "bates_end": 4,
+      "doc_type": "medical records"
+    },
+    {
+      "doc_id": "d03",
+      "path": "SYN 000005-000006 - Peak Physical Therapy.pdf",
+      "sha256": "90fccdf6ecb84a57208a530194db4ee6a8fdba07294fd08c3f21c13ec8895b24",
+      "page_count": 2,
+      "bates_prefix": "SYN",
+      "bates_start": 5,
+      "bates_end": 6,
+      "doc_type": "medical records"
+    },
+    {
+      "doc_id": "d04",
+      "path": "SYN 000007 - Front Range Chiropractic.pdf",
+      "sha256": "02dee3efe03282c88e1e76309b5b398b3c5898a3e80ac717d567aa1587968878",
+      "page_count": 1,
+      "bates_prefix": "SYN",
+      "bates_start": 7,
+      "bates_end": 7,
+      "doc_type": "medical records"
+    },
+    {
+      "doc_id": "d05",
+      "path": "SYN 000008-000011 - Sample Orthopedics.pdf",
+      "sha256": "8e386c5fdb11140e2c5445ee008c41105e6a1c42bfb49196ddc5669f7a38bf76",
+      "page_count": 4,
+      "bates_prefix": "SYN",
+      "bates_start": 8,
+      "bates_end": 11,
+      "doc_type": "medical records"
+    },
+    {
+      "doc_id": "d06",
+      "path": "SYN 000012 - Pharmacy dispensing history.pdf",
+      "sha256": "8f13a3b6976b2c0af41afc6e0ed5296cde84b160550e66667517438ce1457323",
+      "page_count": 1,
+      "bates_prefix": "SYN",
+      "bates_start": 12,
+      "bates_end": 12,
+      "doc_type": "pharmacy records"
+    },
+    {
+      "doc_id": "d07",
+      "path": "SYN 000013-000014 - Billing.pdf",
+      "sha256": "9e58a3bc8d852ac2322aebba15f2e77c96ef085da8ddb4c547fe151084b07bb2",
+      "page_count": 2,
+      "bates_prefix": "SYN",
+      "bates_start": 13,
+      "bates_end": 14,
+      "doc_type": "billing"
+    },
+    {
+      "doc_id": "d08",
+      "path": "Patient intake packet.pdf",
+      "sha256": "651fbd293fd632465165a8542a41b2ebe979f54ec0f76c0de0ad2ec235442c42",
+      "page_count": 1,
+      "bates_prefix": null,
+      "bates_start": null,
+      "bates_end": null,
+      "doc_type": "medical records"
+    }
+  ],
+  "pages": [
+    {
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "text": "MOUNTAIN VIEW REGIONAL EMERGENCY DEPARTMENT\nPatient: TESTPATIENT, ALEX   DOB: 01/01/1980   MRN: 000111\nArrival: 03/14/2024 18:42  Mode: private vehicle\nChief complaint: neck pain after motor vehicle collision\nHPI: 44 y/o restrained driver, rear-ended at a stoplight approx 1 hr prior. Reports posterior neck pain 6/10, denies LOC, denies numbness or tingling.\nExam: Paraspinal tenderness C4-C6. No midline tenderness. Strength 5/5 bilateral upper extremities.\nAssessment: Cervical strain.\nDisposition: Discharged home with ibuprofen. Follow up with PCP in 1 week.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "ed_note"
+    },
+    {
+      "doc_id": "d01",
+      "page_index": 1,
+      "bates_label": "SYN 000002",
+      "text": "RADIOLOGY REPORT\nExam: XR CERVICAL SPINE 3 VIEWS\nClinical indication: neck pain after MVC\nComparison: None.\nFindings: Normal alignment. Vertebral body heights are maintained. Mild disc space narrowing at C5-C6 with small anterior osteophytes. No acute fracture. Prevertebral soft tissues within normal limits.\nImpression: No acute fracture. Mild degenerative changes at C5-C6.\nElectronically signed by: R. Example, MD",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "imaging_report"
+    },
+    {
+      "doc_id": "d01",
+      "page_index": 2,
+      "bates_label": "SYN 000003",
+      "text": "ED TRIAGE NOTE\nTriage time 21:05  ESI level 4\nVitals: BP 132/84 HR 88 RR 16 SpO2 99% T 98.4F\nReason for visit: low back pain, slipped on wet floor at work\nPain score 7/10. Ambulatory with steady gait. No bowel or bladder changes reported.\nTriage RN: J. Example, RN",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "ed_note"
+    },
+    {
+      "doc_id": "d02",
+      "page_index": 0,
+      "bates_label": "SYN 000004",
+      "text": "FAMILY MEDICINE ASSOCIATES - PROGRESS NOTE\nDate of service: 03/21/2024\nSubjective: Follow up for neck pain since MVC on 03/14/2024. Pain improved from 6/10 to 4/10. Some stiffness in the mornings. Sleeping better.\nObjective: Decreased cervical rotation to the right. No neurological deficits.\nAssessment/Plan: 1. Cervical strain, improving. Refer to physical therapy 2x/week for 6 weeks. Continue NSAIDs as needed. Return in 4 weeks.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "office_visit"
+    },
+    {
+      "doc_id": "d03",
+      "page_index": 0,
+      "bates_label": "SYN 000005",
+      "text": "PHYSICAL THERAPY DAILY NOTE  Visit 4 of 12\nDx: Cervical strain (S16.1XXA)\nPatient reports 3/10 neck pain today, able to drive 30 minutes without increase in symptoms.\nTreatment: Manual therapy 15 min, therapeutic exercise 20 min (chin tucks, scapular retraction, thoracic extension), moist heat 10 min.\nAssessment: Improving cervical ROM, rotation now 60 deg bilaterally.\nPlan: Continue per plan of care. Progress to resisted rows next visit.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "therapy_note"
+    },
+    {
+      "doc_id": "d03",
+      "page_index": 1,
+      "bates_label": "SYN 000006",
+      "text": "PATIENT EDUCATION: HOME EXERCISES FOR NECK PAIN\n1. Chin tucks: sit tall, gently draw your chin straight back. Hold 5 seconds. Repeat 10 times.\n2. Shoulder rolls: roll shoulders backward in a slow circle 10 times.\nStop any exercise that causes sharp pain and contact your provider.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "other"
+    },
+    {
+      "doc_id": "d04",
+      "page_index": 0,
+      "bates_label": "SYN 000007",
+      "text": "CHIROPRACTIC TREATMENT RECORD\nDate: 04/02/2024\nSubjective: Lower back tight, 5/10, worse after sitting.\nSegments adjusted: L4, L5, SI joint right.\nModalities: electrical stimulation 12 minutes, intersegmental traction.\nResponse to treatment: patient tolerated well, reports decreased tightness post adjustment.\nNext visit: 04/05/2024",
+      "text_source": "ocr",
+      "ocr_confidence": 0.62,
+      "page_type": "therapy_note"
+    },
+    {
+      "doc_id": "d05",
+      "page_index": 0,
+      "bates_label": "SYN 000008",
+      "text": "ORTHOPEDIC CONSULTATION\nReferring provider: Dr. Sample\nHistory: Right shoulder pain for 3 months. Patient reports a prior shoulder injury playing softball in 2019, resolved without treatment.\nExam: Positive Neer and Hawkins on the right. Full passive range of motion.\nImpression: Right shoulder impingement, rule out rotator cuff tear.\nPlan: MRI right shoulder without contrast. Subacromial injection offered, patient will consider.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "office_visit"
+    },
+    {
+      "doc_id": "d05",
+      "page_index": 1,
+      "bates_label": "SYN 000009",
+      "text": "MRI RIGHT SHOULDER WITHOUT CONTRAST\nTechnique: Multiplanar multisequence MR imaging of the right shoulder.\nFindings: Partial thickness articular surface tear of the supraspinatus tendon measuring 6 mm. Mild subacromial-subdeltoid bursitis. Type II acromion. Labrum intact.\nIMPRESSION:\n1. Partial thickness supraspinatus tear.\n2. Mild bursitis.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "imaging_report"
+    },
+    {
+      "doc_id": "d05",
+      "page_index": 2,
+      "bates_label": "SYN 000010",
+      "text": "PROCEDURE NOTE\nProcedure: Right subacromial corticosteroid injection under ultrasound guidance\nIndication: Right shoulder impingement\nConsent: Risks including infection, bleeding and tendon weakening discussed; written consent obtained.\nTechnique: Skin prepped with chlorhexidine. 25-gauge needle advanced into the subacromial space under direct visualization. Injected 40 mg triamcinolone with 4 mL 1% lidocaine.\nComplications: None. Patient tolerated the procedure well.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "procedure_report"
+    },
+    {
+      "doc_id": "d05",
+      "page_index": 3,
+      "bates_label": "SYN 000011",
+      "text": "OPERATIVE REPORT\nPreoperative diagnosis: Right shoulder rotator cuff tear\nPostoperative diagnosis: Same\nProcedure: Arthroscopic rotator cuff repair, subacromial decompression\nAnesthesia: General with interscalene block\nEstimated blood loss: minimal\nFindings: Full thickness tear of the supraspinatus, 1.5 cm. Repaired with two suture anchors.\nThe patient was taken to recovery in stable condition.",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "procedure_report"
+    },
+    {
+      "doc_id": "d06",
+      "page_index": 0,
+      "bates_label": "SYN 000012",
+      "text": "PHARMACY DISPENSING HISTORY\nRx#  Fill date   Drug                         Qty  Days  Prescriber\n4471 03/14/2024  IBUPROFEN 800MG TAB          30   10   EXAMPLE, ED PHYSICIAN\n4502 03/21/2024  CYCLOBENZAPRINE 5MG TAB      20   20   SAMPLE, FAMILY MED\n4598 04/18/2024  METHYLPREDNISOLONE 4MG DOSE  21    6   SAMPLE, FAMILY MED",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "medication_record"
+    },
+    {
+      "doc_id": "d07",
+      "page_index": 0,
+      "bates_label": "SYN 000013",
+      "text": "ITEMIZED STATEMENT\nAccount #: 0099887   Statement date: 04/30/2024\nDate     CPT    Description                         Charge\n03/14/24 99284  ED visit, moderate complexity       $1,240.00\n03/14/24 72040  X-ray cervical spine 2-3 views      $312.00\n03/14/24 J1885  Ketorolac injection                 $48.00\nTotal charges: $1,600.00   Insurance payments: ($900.00)\nPATIENT BALANCE DUE: $700.00",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "billing"
+    },
+    {
+      "doc_id": "d07",
+      "page_index": 1,
+      "bates_label": "SYN 000014",
+      "text": "HEALTH INSURANCE CLAIM FORM (CMS-1500)\n1a. Insured's ID: XYZ000000\n21. Diagnosis: A. S16.1XXA  B. M54.2\n24. Dates of service 04/02/24 - 04/30/24  Place of service 11\nCPT/HCPCS 97110 x8 units  97140 x8 units  97010 x8 units\nTotal charge $2,184.00  Amount paid $0.00\n31. Signature of physician or supplier",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "billing"
+    },
+    {
+      "doc_id": "d08",
+      "page_index": 0,
+      "bates_label": null,
+      "text": "CURRENT MEDICATION LIST  (printed 05/01/2024)\n1. Ibuprofen 600 mg tab - 1 tab PO every 8 hours as needed for pain\n2. Cyclobenzaprine 10 mg tab - 1 tab PO at bedtime as needed for muscle spasm\n3. Lisinopril 10 mg tab - 1 tab PO daily\n4. Vitamin D3 2000 IU - 1 cap PO daily\nAllergies: Penicillin (rash)",
+      "text_source": "native",
+      "ocr_confidence": null,
+      "page_type": "medication_record"
+    }
+  ],
+  "spans": [
+    {
+      "span_id": "s01",
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "char_start": 152,
+      "char_end": 208,
+      "quote": "Chief complaint: neck pain after motor vehicle collision"
+    },
+    {
+      "span_id": "s02",
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "char_start": 319,
+      "char_end": 329,
+      "quote": "denies loss of consciousness"
+    },
+    {
+      "span_id": "s03",
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "char_start": 331,
+      "char_end": 358,
+      "quote": "denies numbness or tingling"
+    },
+    {
+      "span_id": "s04",
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "char_start": 366,
+      "char_end": 393,
+      "quote": "Paraspinal tenderness C4-C6"
+    },
+    {
+      "span_id": "s05",
+      "doc_id": "d01",
+      "page_index": 0,
+      "bates_label": "SYN 000001",
+      "char_start": 460,
+      "char_end": 488,
+      "quote": "Assessment: Cervical strain."
+    },
+    {
+      "span_id": "s06",
+      "doc_id": "d01",
+      "page_index": 1,
+      "bates_label": "SYN 000002",
+      "char_start": 341,
+      "char_end": 376,
+      "quote": "Mild degenerative changes at C5-C6."
+    },
+    {
+      "span_id": "s07",
+      "doc_id": "d01",
+      "page_index": 1,
+      "bates_label": "SYN 000002",
+      "char_start": 310,
+      "char_end": 340,
+      "quote": "Impression: No acute fracture."
+    },
+    {
+      "span_id": "s08",
+      "doc_id": "d02",
+      "page_index": 0,
+      "bates_label": "SYN 000004",
+      "char_start": 313,
+      "char_end": 340,
+      "quote": "Cervical strain, improving."
+    },
+    {
+      "span_id": "s09",
+      "doc_id": "d02",
+      "page_index": 0,
+      "bates_label": "SYN 000004",
+      "char_start": 225,
+      "char_end": 266,
+      "quote": "Decreased cervical rotation to the right."
+    },
+    {
+      "span_id": "s10",
+      "doc_id": "d03",
+      "page_index": 0,
+      "bates_label": "SYN 000005",
+      "char_start": 43,
+      "char_end": 73,
+      "quote": "Dx: Cervical strain (S16.1XXA)"
+    },
+    {
+      "span_id": "s11",
+      "doc_id": "d07",
+      "page_index": 1,
+      "bates_label": "SYN 000014",
+      "char_start": 82,
+      "char_end": 93,
+      "quote": "A. S16.1XXA"
+    },
+    {
+      "span_id": "s12",
+      "doc_id": "d04",
+      "page_index": 0,
+      "bates_label": "SYN 000007",
+      "char_start": 59,
+      "char_end": 103,
+      "quote": "Lower back tight, 5/10, worse after sitting."
+    },
+    {
+      "span_id": "s13",
+      "doc_id": "d01",
+      "page_index": 2,
+      "bates_label": "SYN 000003",
+      "char_start": 111,
+      "char_end": 154,
+      "quote": "low back pain, slipped on wet floor at work"
+    },
+    {
+      "span_id": "s14",
+      "doc_id": "d05",
+      "page_index": 0,
+      "bates_label": "SYN 000008",
+      "char_start": 116,
+      "char_end": 190,
+      "quote": "prior shoulder injury playing softball in 2019, resolved without treatment"
+    },
+    {
+      "span_id": "s15",
+      "doc_id": "d05",
+      "page_index": 0,
+      "bates_label": "SYN 000008",
+      "char_start": 64,
+      "char_end": 97,
+      "quote": "Right shoulder pain for 3 months."
+    },
+    {
+      "span_id": "s16",
+      "doc_id": "d05",
+      "page_index": 0,
+      "bates_label": "SYN 000008",
+      "char_start": 268,
+      "char_end": 335,
+      "quote": "Impression: Right shoulder impingement, rule out rotator cuff tear."
+    },
+    {
+      "span_id": "s17",
+      "doc_id": "d05",
+      "page_index": 1,
+      "bates_label": "SYN 000009",
+      "char_start": 285,
+      "char_end": 325,
+      "quote": "1. Partial thickness supraspinatus tear."
+    },
+    {
+      "span_id": "s18",
+      "doc_id": "d05",
+      "page_index": 3,
+      "bates_label": "SYN 000011",
+      "char_start": 249,
+      "char_end": 308,
+      "quote": "Findings: Full thickness tear of the supraspinatus, 1.5 cm."
+    },
+    {
+      "span_id": "s19",
+      "doc_id": "d05",
+      "page_index": 2,
+      "bates_label": "SYN 000010",
+      "char_start": 361,
+      "char_end": 413,
+      "quote": "Injected 40 mg triamcinolone with 4 mL 1% lidocaine."
+    },
+    {
+      "span_id": "s20",
+      "doc_id": "d05",
+      "page_index": 3,
+      "bates_label": "SYN 000011",
+      "char_start": 104,
+      "char_end": 174,
+      "quote": "Procedure: Arthroscopic rotator cuff repair, subacromial decompression"
+    },
+    {
+      "span_id": "s21",
+      "doc_id": "d06",
+      "page_index": 0,
+      "bates_label": "SYN 000012",
+      "char_start": 113,
+      "char_end": 132,
+      "quote": "IBUPROFEN 800MG TAB"
+    },
+    {
+      "span_id": "s22",
+      "doc_id": "d08",
+      "page_index": 0,
+      "bates_label": null,
+      "char_start": 195,
+      "char_end": 232,
+      "quote": "Lisinopril 10 mg tab - 1 tab PO daily"
+    },
+    {
+      "span_id": "s23",
+      "doc_id": "d08",
+      "page_index": 0,
+      "bates_label": null,
+      "char_start": 272,
+      "char_end": 300,
+      "quote": "Allergies: Penicillin (rash)"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "f01",
+      "span_ids": [
+        "s01"
+      ],
+      "category": "symptom",
+      "original_phrase": "Chief complaint: neck pain after motor vehicle collision",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "neck",
+      "event_date": "2024-03-14",
+      "document_date": "2024-03-14"
+    },
+    {
+      "finding_id": "f02",
+      "span_ids": [
+        "s02"
+      ],
+      "category": "symptom",
+      "original_phrase": "denies LOC",
+      "assertion": "absent",
+      "subject": "patient",
+      "body_site": "head",
+      "event_date": "2024-03-14",
+      "document_date": "2024-03-14"
+    },
+    {
+      "finding_id": "f03",
+      "span_ids": [
+        "s03"
+      ],
+      "category": "symptom",
+      "original_phrase": "denies numbness or tingling",
+      "assertion": "absent",
+      "subject": "patient",
+      "body_site": "upper extremities",
+      "event_date": "2024-03-14",
+      "document_date": "2024-03-14"
+    },
+    {
+      "finding_id": "f04",
+      "span_ids": [
+        "s04"
+      ],
+      "category": "exam",
+      "original_phrase": "Paraspinal tenderness C4-C6",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-14",
+      "document_date": "2024-03-14"
+    },
+    {
+      "finding_id": "f05",
+      "span_ids": [
+        "s05"
+      ],
+      "category": "diagnosis",
+      "original_phrase": "Assessment: Cervical strain.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-14",
+      "document_date": "2024-03-14"
+    },
+    {
+      "finding_id": "f06",
+      "span_ids": [
+        "s06"
+      ],
+      "category": "imaging",
+      "original_phrase": "Mild degenerative changes at C5-C6.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-14",
+      "document_date": null
+    },
+    {
+      "finding_id": "f07",
+      "span_ids": [
+        "s07"
+      ],
+      "category": "imaging",
+      "original_phrase": "Impression: No acute fracture.",
+      "assertion": "absent",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-14",
+      "document_date": null
+    },
+    {
+      "finding_id": "f08",
+      "span_ids": [
+        "s08"
+      ],
+      "category": "diagnosis",
+      "original_phrase": "Cervical strain, improving.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-21",
+      "document_date": "2024-03-21"
+    },
+    {
+      "finding_id": "f09",
+      "span_ids": [
+        "s09"
+      ],
+      "category": "exam",
+      "original_phrase": "Decreased cervical rotation to the right.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-03-21",
+      "document_date": "2024-03-21"
+    },
+    {
+      "finding_id": "f10",
+      "span_ids": [
+        "s10"
+      ],
+      "category": "diagnosis",
+      "original_phrase": "Dx: Cervical strain (S16.1XXA)",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-04",
+      "document_date": null
+    },
+    {
+      "finding_id": "f11",
+      "span_ids": [
+        "s11"
+      ],
+      "category": "diagnosis",
+      "original_phrase": "A. S16.1XXA",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "cervical spine",
+      "event_date": "2024-04-02",
+      "document_date": null
+    },
+    {
+      "finding_id": "f12",
+      "span_ids": [
+        "s12"
+      ],
+      "category": "symptom",
+      "original_phrase": "Lower back tight, 5/10, worse after sitting.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "lumbar spine",
+      "event_date": "2024-04-02",
+      "document_date": "2024-04-02"
+    },
+    {
+      "finding_id": "f13",
+      "span_ids": [
+        "s13"
+      ],
+      "category": "symptom",
+      "original_phrase": "low back pain, slipped on wet floor at work",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "lumbar spine",
+      "event_date": null,
+      "document_date": null
+    },
+    {
+      "finding_id": "f14",
+      "span_ids": [
+        "s14"
+      ],
+      "category": "injury",
+      "original_phrase": "prior shoulder injury playing softball in 2019, resolved without treatment",
+      "assertion": "historical",
+      "subject": "patient",
+      "body_site": "shoulder",
+      "event_date": "2019",
+      "document_date": null
+    },
+    {
+      "finding_id": "f15",
+      "span_ids": [
+        "s15"
+      ],
+      "category": "symptom",
+      "original_phrase": "Right shoulder pain for 3 months.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-06",
+      "document_date": null
+    },
+    {
+      "finding_id": "f16",
+      "span_ids": [
+        "s16"
+      ],
+      "category": "diagnosis",
+      "original_phrase": "Impression: Right shoulder impingement, rule out rotator cuff tear.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-06",
+      "document_date": null
+    },
+    {
+      "finding_id": "f17",
+      "span_ids": [
+        "s17"
+      ],
+      "category": "imaging",
+      "original_phrase": "1. Partial thickness supraspinatus tear.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-07-02",
+      "document_date": null
+    },
+    {
+      "finding_id": "f18",
+      "span_ids": [
+        "s18"
+      ],
+      "category": "procedure",
+      "original_phrase": "Findings: Full thickness tear of the supraspinatus, 1.5 cm.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-09-12",
+      "document_date": null
+    },
+    {
+      "finding_id": "f19",
+      "span_ids": [
+        "s19"
+      ],
+      "category": "procedure",
+      "original_phrase": "Injected 40 mg triamcinolone with 4 mL 1% lidocaine.",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-07-15",
+      "document_date": null
+    },
+    {
+      "finding_id": "f20",
+      "span_ids": [
+        "s20"
+      ],
+      "category": "procedure",
+      "original_phrase": "Procedure: Arthroscopic rotator cuff repair, subacromial decompression",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": "right shoulder",
+      "event_date": "2024-09-12",
+      "document_date": null
+    },
+    {
+      "finding_id": "f21",
+      "span_ids": [
+        "s21"
+      ],
+      "category": "medication",
+      "original_phrase": "IBUPROFEN 800MG TAB",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": null,
+      "event_date": "2024-03-14",
+      "document_date": null
+    },
+    {
+      "finding_id": "f22",
+      "span_ids": [
+        "s22"
+      ],
+      "category": "medication",
+      "original_phrase": "Lisinopril 10 mg tab - 1 tab PO daily",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": null,
+      "event_date": null,
+      "document_date": null
+    },
+    {
+      "finding_id": "f23",
+      "span_ids": [
+        "s23"
+      ],
+      "category": "allergy",
+      "original_phrase": "Allergies: Penicillin (rash)",
+      "assertion": "present",
+      "subject": "patient",
+      "body_site": null,
+      "event_date": null,
+      "document_date": null
+    }
+  ],
+  "mappings": [
+    {
+      "finding_id": "f01",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "M54.2",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 1,
+      "rationale": null
+    },
+    {
+      "finding_id": "f05",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "S16.1XXA",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 1,
+      "rationale": null
+    },
+    {
+      "finding_id": "f08",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "S16.1XXA",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 1,
+      "rationale": null
+    },
+    {
+      "finding_id": "f10",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "S16.1XXA",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 1,
+      "rationale": null
+    },
+    {
+      "finding_id": "f11",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "S16.1XXA",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 1,
+      "rationale": null
+    },
+    {
+      "finding_id": "f16",
+      "status": "mapped",
+      "cui": null,
+      "source_vocab": "ICD10CM",
+      "source_code": "M75.41",
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 2,
+      "rationale": null
+    },
+    {
+      "finding_id": "f17",
+      "status": "needs_review",
+      "cui": null,
+      "source_vocab": null,
+      "source_code": null,
+      "umls_release": "2026AA",
+      "candidates": [
+        "M75.111",
+        "S46.011A"
+      ],
+      "iterations": 3,
+      "rationale": "Partial-thickness tear; the record does not say traumatic or degenerative."
+    },
+    {
+      "finding_id": "f04",
+      "status": "unmapped",
+      "cui": null,
+      "source_vocab": null,
+      "source_code": null,
+      "umls_release": "2026AA",
+      "candidates": [],
+      "iterations": 3,
+      "rationale": "No single concept covers paraspinal tenderness over a level range."
+    }
+  ],
+  "events": [
+    {
+      "event_id": "ev-01",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f01"
+      ],
+      "conflicts": [],
+      "review_status": "approved"
+    },
+    {
+      "event_id": "ev-02",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f02"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-03",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f03"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-04",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f04"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-05",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f05",
+        "f08",
+        "f10",
+        "f11"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-06",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f06"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-07",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f07"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-08",
+      "date": "2024-03-14",
+      "date_precision": "day",
+      "finding_ids": [
+        "f21"
+      ],
+      "conflicts": [],
+      "review_status": "rejected"
+    },
+    {
+      "event_id": "ev-09",
+      "date": "2024-03-21",
+      "date_precision": "day",
+      "finding_ids": [
+        "f09"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-10",
+      "date": "2024-04-02",
+      "date_precision": "day",
+      "finding_ids": [
+        "f12"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-11",
+      "date": "2019",
+      "date_precision": "year",
+      "finding_ids": [
+        "f14"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-12",
+      "date": "2024-06",
+      "date_precision": "month",
+      "finding_ids": [
+        "f15"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-13",
+      "date": "2024-06",
+      "date_precision": "month",
+      "finding_ids": [
+        "f16"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-14",
+      "date": "2024-07-02",
+      "date_precision": "day",
+      "finding_ids": [
+        "f17",
+        "f18"
+      ],
+      "conflicts": [
+        "f17",
+        "f18"
+      ],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-15",
+      "date": "2024-07-15",
+      "date_precision": "day",
+      "finding_ids": [
+        "f19"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-16",
+      "date": "2024-09-12",
+      "date_precision": "day",
+      "finding_ids": [
+        "f20"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-17",
+      "date": null,
+      "date_precision": "unknown",
+      "finding_ids": [
+        "f13"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-18",
+      "date": null,
+      "date_precision": "unknown",
+      "finding_ids": [
+        "f22"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    },
+    {
+      "event_id": "ev-19",
+      "date": null,
+      "date_precision": "unknown",
+      "finding_ids": [
+        "f23"
+      ],
+      "conflicts": [],
+      "review_status": "pending"
+    }
+  ]
+}
